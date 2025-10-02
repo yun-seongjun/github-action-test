@@ -20,13 +20,14 @@ jobs:
         with:
           ref: staging
           fetch-depth: 0
+          token: ${{ github.token }}  # allow push
 
-      - name: Setup Node.js (22.17.1)
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22.17.1
+          node-version: '20'
 
-      - name: Strip -rc.N to stable (edit files)
+      - name: Strip -rc.N to stable (edit & commit)
         id: strip
         shell: bash
         run: |
@@ -40,10 +41,8 @@ jobs:
               echo "skip: $PKG not found" >&2
               continue
             fi
-
             CUR=$(node -p "require('./' + '${PKG}').version")
             STABLE=$(echo "$CUR" | sed 's/-rc\.[0-9]\+$//')
-
             if [ "$CUR" != "$STABLE" ]; then
               node -e "
                 const fs = require('fs');
@@ -67,13 +66,12 @@ jobs:
             git config user.name  "GitHub Actions"
             git config user.email "github-actions@github.com"
             git add apps/*/package.json
-            git commit -m "chore(release): strip RC to stable"
+            git commit -m "release: RC to stable"
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            # space-separated list (safe for `for APP in ...`)
             echo "changed_apps=${CHANGED_APPS[*]}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build versions line (ALL apps, for PR title/body)
+      - name: Build PR line (ALL apps, comma-separated with backticks)
         id: ver
         if: steps.strip.outputs.changed == 'true'
         shell: bash
@@ -111,7 +109,6 @@ jobs:
             SEP="_"
           done
 
-          # RAW like: neubie-go@1.2.3_neubie-order@0.0.1
           BASE=$(printf "%s" "$RAW" \
             | sed 's/@/-/g' \
             | sed 's/\./_/g' \
@@ -122,29 +119,45 @@ jobs:
           echo "dev=release/${BASE}_dev"   >> "$GITHUB_OUTPUT"
           echo "base=$BASE"                >> "$GITHUB_OUTPUT"
 
+      - name: Create & push branches
+        if: steps.strip.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git branch "${{ steps.branch.outputs.main }}"
+          git branch "${{ steps.branch.outputs.dev }}"
+          git push origin "${{ steps.branch.outputs.main }}:${{ steps.branch.outputs.main }}"
+          git push origin "${{ steps.branch.outputs.dev }}:${{ steps.branch.outputs.dev }}"
+
       - name: Create PR -> main
         if: steps.strip.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ github.token }}
-          base: main
-          branch: ${{ steps.branch.outputs.main }}
-          title: "Release: ${{ steps.ver.outputs.pretty }}"
-          body:  "Release: ${{ steps.ver.outputs.pretty }}"
-          commit-message: "chore(release): strip RC to stable"
-          delete-branch: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf -v LINE 'Release: %s' "${{ steps.ver.outputs.pretty }}"
+          gh pr create \
+            --repo "${{ github.repository }}" \
+            --title "$LINE" \
+            --body  "$LINE" \
+            --base main \
+            --head "${{ steps.branch.outputs.main }}"
 
       - name: Create PR -> dev
         if: steps.strip.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ github.token }}
-          base: dev
-          branch: ${{ steps.branch.outputs.dev }}
-          title: "Staging -> Dev: ${{ steps.ver.outputs.pretty }}"
-          body:  "Staging -> Dev: ${{ steps.ver.outputs.pretty }}"
-          commit-message: "chore(release): strip RC to stable"
-          delete-branch: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf -v LINE 'Staging -> Dev: %s' "${{ steps.ver.outputs.pretty }}"
+          gh pr create \
+            --repo "${{ github.repository }}" \
+            --title "$LINE" \
+            --body  "$LINE" \
+            --base dev \
+            --head "${{ steps.branch.outputs.dev }}"
 
       - name: No-op summary
         if: steps.strip.outputs.changed != 'true'
