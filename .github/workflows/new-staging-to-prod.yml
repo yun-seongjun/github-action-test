@@ -46,7 +46,7 @@ jobs:
             --assignee "${{ github.actor }}" \
             --base main --head staging
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
 
   # staging 브랜치를 dev에 머지하는 PR 생성
   create-PR-staging-to-dev:
