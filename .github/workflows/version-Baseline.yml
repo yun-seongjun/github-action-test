@@ -1,0 +1,140 @@
+name: Version Baseline
+
+on:
+  workflow_dispatch:
+    inputs:
+      target-version:
+        description: "Target version (e.g., 1.51.0)"
+        required: true
+        default: "1.51.0"
+      app:
+        description: "Select ONE app to baseline"
+        type: choice
+        required: true
+        options:
+          - NEUBIE_GO
+          - NEUBIE_ORDER
+          - NEUBIE_ORDER_ADMIN
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Configure git
+        run: |
+          git config user.name  "GitHub Actions"
+          git config user.email "github-actions@github.com"
+
+      - name: Setup Node.js (22.17.1)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.1
+
+      - name: Map app -> dir & slug
+        id: map
+        shell: bash
+        run: |
+          case "${{ github.event.inputs.app }}" in
+            NEUBIE_GO)
+              echo "dir=apps/neubie-go" >> "$GITHUB_OUTPUT"
+              echo "slug=neubie-go" >> "$GITHUB_OUTPUT"
+              echo "pretty=뉴비고" >> "$GITHUB_OUTPUT"
+              ;;
+            NEUBIE_ORDER)
+              echo "dir=apps/neubie-order" >> "$GITHUB_OUTPUT"
+              echo "slug=neubie-order" >> "$GITHUB_OUTPUT"
+              echo "pretty=뉴비오더" >> "$GITHUB_OUTPUT"
+              ;;
+            NEUBIE_ORDER_ADMIN)
+              echo "dir=apps/neubie-order-admin" >> "$GITHUB_OUTPUT"
+              echo "slug=neubie-order-admin" >> "$GITHUB_OUTPUT"
+              echo "pretty=뉴비오더 어드민" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Create working branch
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          TS=$(date +%Y%m%d%H%M%S)
+          BR="version/${{ steps.map.outputs.slug }}-${{ github.event.inputs['target-version'] }}-$TS"
+          git checkout -b "$BR"
+          echo "branch=$BR" >> "$GITHUB_OUTPUT"
+
+      - name: Bump selected app to target version
+        id: bump
+        shell: bash
+        env:
+          PKG_PATH: ${{ steps.map.outputs.dir }}/package.json
+          TARGET: ${{ github.event.inputs['target-version'] }}
+        run: |
+          set -euo pipefail
+          if [ ! -f "$PKG_PATH" ]; then
+            echo "::error ::package.json not found at $PKG_PATH"
+            exit 1
+          fi
+
+          CUR=$(node -p "require('./'+process.argv[1]).version" "$PKG_PATH")
+          echo "Current: $CUR  ->  Target: $TARGET"
+
+          if [ "$CUR" = "$TARGET" ]; then
+            echo "nothing=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          node -e "
+            const fs=require('fs');
+            const p=process.env.PKG_PATH;
+            const target=process.env.TARGET;
+            const pkg=JSON.parse(fs.readFileSync(p,'utf8'));
+            pkg.version=target;
+            fs.writeFileSync(p, JSON.stringify(pkg, null, 2)+'\n');
+          "
+
+          git add "$PKG_PATH"
+          git commit -m "chore(version): ${{ steps.map.outputs.slug }} -> $TARGET (from $CUR)"
+
+          echo "prev=$CUR"     >> "$GITHUB_OUTPUT"
+          echo "next=$TARGET"  >> "$GITHUB_OUTPUT"
+          echo "nothing=false" >> "$GITHUB_OUTPUT"
+
+      - name: Push branch
+        if: steps.bump.outputs.nothing == 'false'
+        run: git push -u origin "${{ steps.meta.outputs.branch }}"
+
+      - name: Create Pull Request to dev
+        if: steps.bump.outputs.nothing == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="chore(version): ${{ steps.map.outputs.slug }} -> ${{ steps.bump.outputs.next }}"
+          BODY=$(
+            cat <<'EOT'
+          ## Version Baseline (single app)
+          - App: **${{ steps.map.outputs.pretty }}** (`${{ steps.map.outputs.slug }}`)
+          - From: `${{ steps.bump.outputs.prev }}`
+          - To:   `${{ steps.bump.outputs.next }}`
+
+          This PR updates the selected app's version in `dev`.
+          EOT
+          )
+          gh pr create \
+            --title "$TITLE" \
+            --body "$BODY" \
+            --base dev \
+            --head "${{ steps.meta.outputs.branch }}" \
+            --assignee "${{ github.actor }}"
+
+      - name: Nothing to baseline
+        if: steps.bump.outputs.nothing == 'true'
+        run: echo "Nothing to baseline for ${{ steps.map.outputs.slug }}. No PR created."

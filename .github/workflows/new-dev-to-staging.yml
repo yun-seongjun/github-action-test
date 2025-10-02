@@ -1,0 +1,157 @@
+name: Dev -> Staging --new
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Do not push/delete remote branch or tags (simulate only)"
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  APPS: "neubie-go neubie-order neubie-order-admin"
+
+jobs:
+  create-staging:
+    runs-on: ubuntu-latest
+    env:
+      DRY_RUN: ${{ github.event.inputs.dry-run && 'true' || 'false' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+          fetch-tags: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "github-actions@github.com"
+
+      - name: DRY RUN notice
+        run: |
+          if [ "${{ env.DRY_RUN }}" = "true" ]; then
+            echo "⚠️ DRY RUN MODE ENABLED: Remote branch/tag changes will be simulated only."
+          else
+            echo "✅ LIVE MODE: This run will push branches and tags to the remote."
+          fi
+
+      - name: Pick affected apps vs origin/main
+        id: diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags || true
+          CHANGED=$(git diff --name-only origin/main..HEAD || true)
+          APPS=$(echo "$CHANGED" | awk -F/ '/^apps\//{print $2}' | sort -u | xargs)
+          WANT="${APPS:-}"
+          FILTERED=""
+          for a in ${{ env.APPS }}; do
+            if echo " $WANT " | grep -q " $a "; then FILTERED="$FILTERED $a"; fi
+          done
+          echo "apps=$(echo "$FILTERED" | xargs)" >> "$GITHUB_OUTPUT"
+
+      - name: Delete existing staging branch (remote)
+        if: env.DRY_RUN != 'true'
+        run: |
+          if git ls-remote --exit-code --heads origin staging >/dev/null 2>&1; then
+            echo "Deleting remote branch: staging"
+            git push origin --delete staging || true
+          else
+            echo "Remote branch 'staging' not found. Skip delete."
+          fi
+
+      - name: Delete existing staging branch (remote) (DRY RUN)
+        if: env.DRY_RUN == 'true'
+        run: |
+          echo "DRY RUN: would delete remote branch 'staging' if it existed"
+          git push origin --delete staging --dry-run || true
+
+      - name: Create local staging from dev
+        run: |
+          git branch -D staging 2>/dev/null || true
+          git checkout -b staging dev
+
+      - name: Compute next RC and bump (affected apps only)
+        if: ${{ steps.diff.outputs.apps != '' }}
+        id: bump
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if ! command -v node >/dev/null 2>&1; then
+            echo "Node.js not found on runner"; exit 1
+          fi
+
+          echo "Affected apps: ${{ steps.diff.outputs.apps }}"
+
+          TAGS=()
+          for APP in ${{ steps.diff.outputs.apps }}; do
+            PKG="apps/$APP/package.json"
+            if [ ! -f "$PKG" ]; then
+              echo "Skip: $PKG not found"
+              continue
+            fi
+            BASE=$(node -p "require('./$PKG').version" | sed 's/-rc\.[0-9]\+$//')
+            LAST=$(git tag --list "$APP@${BASE}-rc.*" | sort -V | tail -n1)
+            if [ -z "$LAST" ]; then
+              NEXT=1
+            else
+              NEXT=$(( $(echo "$LAST" | sed -E 's/.*-rc\.([0-9]+)/\1/') + 1 ))
+            fi
+            NEW="${BASE}-rc.${NEXT}"
+            node -e "
+              const fs = require('fs');
+              const p = '$PKG';
+              const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
+              pkg.version = '$NEW';
+              fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
+            "
+            echo "Bumped $APP: $BASE -> $NEW"
+            TAGS+=("$APP@$NEW")
+          done
+
+          if [ -z "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
+            echo "No package.json changes detected; skipping commit and tags."
+            echo "nothing=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git add apps/*/package.json
+          git commit -m "chore(staging RC): bump affected apps to RC"
+
+          echo "Tagging: ${TAGS[*]}"
+
+          for T in "${TAGS[@]}"; do
+            git tag "$T" || true
+          done
+
+          echo "nothing=false" >> "$GITHUB_OUTPUT"
+
+      - name: Push staging branch (always)
+        if: env.DRY_RUN != 'true'
+        run: |
+          git push -u origin HEAD:staging
+
+      - name: Push staging branch (DRY RUN)
+        if: env.DRY_RUN == 'true'
+        run: |
+          echo "DRY RUN: git push -u origin HEAD:staging"
+          git push -u origin HEAD:staging --dry-run || true
+
+      - name: Push tags (only when bumped)
+        if: env.DRY_RUN != 'true' && steps.bump.outputs.nothing == 'false'
+        run: |
+          git push origin --tags
+
+      - name: Push tags (DRY RUN)
+        if: env.DRY_RUN == 'true' && steps.bump.outputs.nothing == 'false'
+        run: |
+          echo "DRY RUN: git push origin --tags"
+          git push origin --tags --dry-run || true
