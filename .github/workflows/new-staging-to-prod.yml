@@ -148,7 +148,7 @@ jobs:
             exit 0
           fi
 
-          printf -v LINE 'Release: %s' '${{ steps.ver.outputs.pretty }}'
+          printf -v LINE '🚀 Release: %s' '${{ steps.ver.outputs.pretty }}'
           gh pr create \
             --repo "${{ github.repository }}" \
             --base main \
@@ -173,7 +173,7 @@ jobs:
             exit 0
           fi
 
-          printf -v LINE 'Staging -> Dev: %s' '${{ steps.ver.outputs.pretty }}'
+          printf -v LINE '🔀 Staging -> Dev: %s' '${{ steps.ver.outputs.pretty }}'
           gh pr create \
             --repo "${{ github.repository }}" \
             --base dev \
