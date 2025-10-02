@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       bump_level:
-        description: "Which semver part to bump before creating RC?"
+        description: "Version bump"
         type: choice
         required: true
         default: patch
@@ -13,7 +13,7 @@ on:
           - minor
           - major
       apps:
-        description: "Which apps? Choose one, or special: auto/all"
+        description: "Target app"
         type: choice
         required: true
         default: auto
