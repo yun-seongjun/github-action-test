@@ -1,6 +1,6 @@
 {
   "name": "nx-example",
-  "version": "1.88.0-rc.8",
+  "version": "1.88.0-rc.19",
   "license": "MIT",
   "scripts": {
     "start": "nx serve",
