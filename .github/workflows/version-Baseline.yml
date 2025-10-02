@@ -66,14 +66,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CUR="${{ steps.bump.outputs.prev }}"
-          NEXT="${{ steps.bump.outputs.next }}"
-          SLUG="${{ steps.map.outputs.slug }}"
-
-          CUR_SAFE=$(echo "$CUR" | tr '.' '_')
-          NEXT_SAFE=$(echo "$NEXT" | tr '.' '_')
-
-          BR="version/${SLUG}-${NEXT_SAFE}-${CUR_SAFE}"
+          TS=$(date +%Y%m%d)
+          BR="version/${{ steps.map.outputs.slug }}-${{ github.event.inputs['target-version'] }}-$TS"
           git checkout -b "$BR"
           echo "branch=$BR" >> "$GITHUB_OUTPUT"
 
