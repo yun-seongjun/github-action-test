@@ -8,7 +8,6 @@ permissions:
   contents: write
 
 jobs:
-  # staging 브랜치를 main에 머지하는 PR 생성
   create-PR-staging-to-main:
     runs-on: ubuntu-latest
     steps:
@@ -18,22 +17,28 @@ jobs:
           ref: staging
           fetch-depth: 0
 
+      - name: Setup Node (for reading package.json)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Read version from package.json
+        id: ver
         run: |
-          if [ -f package.json ]; then
-            echo "SPRINT=$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
-          else
-            echo "SPRINT=unknown" >> "$GITHUB_ENV"
+          set -euo pipefail
+          if [ ! -f package.json ]; then
+            echo "root package.json not found"; exit 1
           fi
+          V=$(node -p "require('./package.json').version")
+          echo "version=$V"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
 
       - name: Check Differences Between Staging and Main
         run: |
           git fetch origin main staging
           if git diff --quiet origin/main origin/staging; then
-            echo "No changes detected between staging and main. Skipping PR creation."
             echo "should_skip_main=true" >> $GITHUB_ENV
           else
-            echo "Changes detected. Proceeding with PR creation."
             echo "should_skip_main=false" >> $GITHUB_ENV
           fi
 
@@ -41,14 +46,14 @@ jobs:
         if: env.should_skip_main == 'false'
         run: |
           gh pr create \
-            --title "🚀 Release ${SPRINT}" \
-            --body  "Release ${SPRINT}" \
+            --repo "${{ github.repository }}" \
+            --title "🚀 Release ${{ steps.ver.outputs.version }}" \
+            --body  "Release ${{ steps.ver.outputs.version }}" \
             --assignee "${{ github.actor }}" \
             --base main --head staging
         env:
           GH_TOKEN: ${{ github.token }}
 
-  # staging 브랜치를 dev에 머지하는 PR 생성
   create-PR-staging-to-dev:
     runs-on: ubuntu-latest
     steps:
@@ -58,22 +63,28 @@ jobs:
           ref: staging
           fetch-depth: 0
 
+      - name: Setup Node (for reading package.json)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Read version from package.json
+        id: ver
         run: |
-          if [ -f package.json ]; then
-            echo "SPRINT=$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
-          else
-            echo "SPRINT=unknown" >> "$GITHUB_ENV"
+          set -euo pipefail
+          if [ ! -f package.json ]; then
+            echo "root package.json not found"; exit 1
           fi
+          V=$(node -p "require('./package.json').version")
+          echo "version=$V"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
 
       - name: Check Differences Between Staging and Dev
         run: |
           git fetch origin dev staging
           if git diff --quiet origin/dev origin/staging; then
-            echo "No changes detected between staging and dev. Skipping PR creation."
             echo "should_skip=true" >> $GITHUB_ENV
           else
-            echo "Changes detected. Proceeding with PR creation."
             echo "should_skip=false" >> $GITHUB_ENV
           fi
 
@@ -81,9 +92,10 @@ jobs:
         if: env.should_skip == 'false'
         run: |
           gh pr create \
-            --title "🔀 Staging -> Dev (${SPRINT})" \
-            --body  "Release ${SPRINT}" \
+            --repo "${{ github.repository }}" \
+            --title "🔀 Staging -> Dev (${{ steps.ver.outputs.version }})" \
+            --body  "Release ${{ steps.ver.outputs.version }}" \
             --assignee "${{ github.actor }}" \
             --base dev --head staging
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
