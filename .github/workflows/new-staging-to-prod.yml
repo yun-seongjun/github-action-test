@@ -1,4 +1,4 @@
-name: Staging -> Main, Dev (RC strip + PR, simple, underscore branches)
+name: Staging -> Main, Dev
 
 on:
   workflow_dispatch: {}
@@ -21,29 +21,29 @@ jobs:
           ref: staging
           fetch-depth: 0
 
-      - name: Setup Node
+      - name: Setup Node.js (22.17.1)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 22.17.1
 
       - name: Strip -rc.N to stable (edit files)
         id: strip
         shell: bash
         run: |
           set -euo pipefail
-          if ! command -v node >/dev/null 2>&1; then
-            echo "Node not found"; exit 1
-          fi
-
           CHANGED=false
+          CHANGED_APPS=()
+
           for APP in ${{ env.APPS }}; do
             PKG="apps/$APP/package.json"
             if [ ! -f "$PKG" ]; then
               echo "skip: $PKG not found" >&2
               continue
             fi
+
             CUR=$(node -p "require('./' + '${PKG}').version")
             STABLE=$(echo "$CUR" | sed 's/-rc\.[0-9]\+$//')
+
             if [ "$CUR" != "$STABLE" ]; then
               node -e "
                 const fs = require('fs');
@@ -54,6 +54,7 @@ jobs:
               "
               echo "release: $APP $CUR -> $STABLE"
               CHANGED=true
+              CHANGED_APPS+=("$APP")
             else
               echo "already stable: $APP@$CUR"
             fi
@@ -61,50 +62,62 @@ jobs:
 
           if [ -z "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "changed_apps=" >> "$GITHUB_OUTPUT"
           else
             git config user.name  "GitHub Actions"
             git config user.email "github-actions@github.com"
             git add apps/*/package.json
             git commit -m "chore(release): strip RC to stable"
             echo "changed=true" >> "$GITHUB_OUTPUT"
+            # space-separated list (safe for `for APP in ...`)
+            echo "changed_apps=${CHANGED_APPS[*]}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build versions line (ALL apps)
+      - name: Build versions line (ALL apps, for PR title/body)
         id: ver
         if: steps.strip.outputs.changed == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          APP_LIST="${{ env.APPS }}"
           PRETTY=""
-          RAW=""
-          SEP_P=""
-          SEP_R=""
-          for APP in $APP_LIST; do
+          SEP=""
+          for APP in ${{ env.APPS }}; do
             PKG="apps/$APP/package.json"
             [ -f "$PKG" ] || continue
             V=$(node -p "require('./' + '${PKG}').version")
-            PRETTY="${PRETTY}${SEP_P}\`${APP}@${V}\`"
-            RAW="${RAW}${SEP_R}${APP}@${V}"
-            SEP_P=", "
-            SEP_R="_"
+            PRETTY="${PRETTY}${SEP}\`${APP}@${V}\`"
+            SEP=", "
           done
           echo "pretty=$PRETTY" >> "$GITHUB_OUTPUT"
-          echo "raw=$RAW"       >> "$GITHUB_OUTPUT"
 
-      - name: Build branch names (underscore, no slug/runid)
+      - name: Build branch names (underscore; ONLY changed apps)
         id: branch
         if: steps.strip.outputs.changed == 'true'
         shell: bash
         run: |
           set -euo pipefail
+          if [ -z "${{ steps.strip.outputs.changed_apps }}" ]; then
+            echo "No changed apps captured; aborting." >&2
+            exit 1
+          fi
+
+          RAW=""
+          SEP=""
+          for APP in ${{ steps.strip.outputs.changed_apps }}; do
+            PKG="apps/$APP/package.json"
+            [ -f "$PKG" ] || continue
+            V=$(node -p "require('./' + '${PKG}').version")
+            RAW="${RAW}${SEP}${APP}@${V}"
+            SEP="_"
+          done
+
           # RAW like: neubie-go@1.2.3_neubie-order@0.0.1
-          SRC="${{ steps.ver.outputs.raw }}"
-          BASE=$(printf "%s" "$SRC" \
+          BASE=$(printf "%s" "$RAW" \
             | sed 's/@/-/g' \
             | sed 's/\./_/g' \
             | sed 's/[^A-Za-z0-9_-]/_/g' \
             | tr '[:upper:]' '[:lower:]')
+
           echo "main=release/${BASE}_main" >> "$GITHUB_OUTPUT"
           echo "dev=release/${BASE}_dev"   >> "$GITHUB_OUTPUT"
           echo "base=$BASE"                >> "$GITHUB_OUTPUT"
