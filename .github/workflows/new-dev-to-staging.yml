@@ -85,54 +85,57 @@ jobs:
         run: |
           set -euo pipefail
 
-          if ! command -v node >/dev/null 2>&1; then
+            if ! command -v node >/dev/null 2>&1; then
             echo "Node.js not found on runner"; exit 1
-          fi
+            fi
 
           echo "Affected apps: ${{ steps.diff.outputs.apps }}"
 
-          TAGS=()
-          for APP in ${{ steps.diff.outputs.apps }}; do
+            TAGS=()
+            for APP in ${{ steps.diff.outputs.apps }}; do
             PKG="apps/$APP/package.json"
             if [ ! -f "$PKG" ]; then
-              echo "Skip: $PKG not found"
-              continue
+          echo "Skip: $PKG not found"
+            continue
             fi
+
             BASE=$(node -p "require('./$PKG').version" | sed 's/-rc\.[0-9]\+$//')
             LAST=$(git tag --list "$APP@${BASE}-rc.*" | sort -V | tail -n1)
             if [ -z "$LAST" ]; then
-              NEXT=1
+            NEXT=1
             else
-              NEXT=$(( $(echo "$LAST" | sed -E 's/.*-rc\.([0-9]+)/\1/') + 1 ))
+            NEXT=$(( $(echo "$LAST" | sed -E 's/.*-rc\.([0-9]+)/\1/') + 1 ))
             fi
             NEW="${BASE}-rc.${NEXT}"
-            node -e "
-              const fs = require('fs');
-              const p = '$PKG';
-              const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
-              pkg.version = '$NEW';
-              fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
-            "
-            echo "Bumped $APP: $BASE -> $NEW"
-            TAGS+=("$APP@$NEW")
-          done
 
-          if [ -z "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
+            # package.json 업데이트
+            node -e "
+            const fs = require('fs');
+            const p = '$PKG';
+            const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
+            pkg.version = '$NEW';
+            fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
+            "
+
+            git add "$PKG"
+            git commit -m "🚀 [$APP] $BASE → $NEW"
+
+          echo "Bumped $APP: $BASE -> $NEW"
+            TAGS+=("$APP@$NEW")
+            done
+
+            if [ ${#TAGS[@]} -eq 0 ]; then
             echo "No package.json changes detected; skipping commit and tags."
             echo "nothing=true" >> "$GITHUB_OUTPUT"
             exit 0
-          fi
-
-          git add apps/*/package.json
-          git commit -m "chore(staging RC): bump affected apps to RC"
+            fi
 
           echo "Tagging: ${TAGS[*]}"
-
-          for T in "${TAGS[@]}"; do
+            for T in "${TAGS[@]}"; do
             git tag "$T" || true
-          done
+            done
 
-          echo "nothing=false" >> "$GITHUB_OUTPUT"
+            echo "nothing=false" >> "$GITHUB_OUTPUT"
 
       - name: Push staging branch (always)
         if: env.DRY_RUN != 'true'
