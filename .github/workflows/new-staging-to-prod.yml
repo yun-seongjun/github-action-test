@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 env:
-  # 관리 대상 앱 목록(필요시 추가/변경)
+  # 전체 앱 목록을 필요에 맞게 관리하세요.
   APPS: "neubie-go neubie-order neubie-order-admin"
 
 jobs:
@@ -22,140 +22,50 @@ jobs:
           ref: staging
           fetch-depth: 0
 
-      - name: Setup Node (to read package.json)
+      - name: Setup Node (for reading package.json)
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Check Differences Between Staging and Main
-        id: diff
         run: |
           set -euo pipefail
           git fetch origin main staging
           if git diff --quiet origin/main origin/staging; then
+            echo "No changes detected between staging and main. Skipping PR creation."
             echo "should_skip_main=true" >> $GITHUB_ENV
-            echo "apps=" >> $GITHUB_OUTPUT
           else
+            echo "Changes detected. Proceeding with PR creation."
             echo "should_skip_main=false" >> $GITHUB_ENV
-            CHANGED=$(git diff --name-only origin/main...origin/staging || true)
-            # 변경된 앱들만 추출
-            CHANGED_APPS=$(echo "$CHANGED" | awk -F/ '/^apps\//{print $2}' | sort -u | xargs)
-            # 대상 앱 목록으로 필터링
-            WANT="${CHANGED_APPS:-}"
-            FILTERED=""
-            for a in ${{ env.APPS }}; do
-              if echo " $WANT " | grep -q " $a "; then FILTERED="$FILTERED $a"; fi
-            done
-            echo "apps=$(echo "$FILTERED" | xargs)" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build versions string (changed apps vs main)
+      - name: Build versions string (ALL apps)
         id: ver
         if: env.should_skip_main == 'false'
         run: |
           set -euo pipefail
-          VERS=""
-          if [ -z "${{ steps.diff.outputs.apps }}" ]; then
-            echo "변경된 앱이 없거나 감지 실패; 전체 목록 사용"
-            APP_LIST="${{ env.APPS }}"
-          else
-            APP_LIST="${{ steps.diff.outputs.apps }}"
-          fi
+          APP_LIST="${{ env.APPS }}"
+          RAW=""
+          PRETTY=""
+          SEP=""
           for APP in $APP_LIST; do
             PKG="apps/$APP/package.json"
             if [ -f "$PKG" ]; then
               V=$(node -p "require('./$PKG').version")
-              VERS="$VERS, $APP@$V"
+              RAW="${RAW}${SEP}${APP}@${V}"
+              PRETTY="${PRETTY}${SEP}\`${APP}@${V}\`"
+              SEP=", "
             else
               echo "skip: $PKG not found" >&2
             fi
           done
-          VERS=$(echo "$VERS" | sed 's/^, //')  # 선행 콤마 제거
-          echo "versions=$VERS" >> "$GITHUB_OUTPUT"
+          echo "versions=$RAW"   >> "$GITHUB_OUTPUT"
+          echo "pretty=$PRETTY"  >> "$GITHUB_OUTPUT"
 
       - name: Create Pull Request
         if: env.should_skip_main == 'false'
         run: |
-          TITLE="🚀 Release: ${{ steps.ver.outputs.versions }}"
-          BODY="This PR merges **staging → main**.\n\n**Changed apps:**\n$(printf '%s' "${{ steps.ver.outputs.versions }}" | tr ',' '\n' | sed 's/^/* /')"
+          LINE="Release: ${{ steps.ver.outputs.pretty }}"
           gh pr create \
             --repo "${{ github.repository }}" \
-            --title "$TITLE" \
-            --body  "$BODY" \
-            --assignee "${{ github.actor }}" \
-            --base main --head staging
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-  # staging 브랜치를 dev에 머지하는 PR 생성
-  create-PR-staging-to-dev:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout staging
-        uses: actions/checkout@v4
-        with:
-          ref: staging
-          fetch-depth: 0
-
-      - name: Setup Node (to read package.json)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Check Differences Between Staging and Dev
-        id: diff
-        run: |
-          set -euo pipefail
-          git fetch origin dev staging
-          if git diff --quiet origin/dev origin/staging; then
-            echo "should_skip=true" >> $GITHUB_ENV
-            echo "apps=" >> $GITHUB_OUTPUT
-          else
-            echo "should_skip=false" >> $GITHUB_ENV
-            CHANGED=$(git diff --name-only origin/dev...origin/staging || true)
-            CHANGED_APPS=$(echo "$CHANGED" | awk -F/ '/^apps\//{print $2}' | sort -u | xargs)
-            WANT="${CHANGED_APPS:-}"
-            FILTERED=""
-            for a in ${{ env.APPS }}; do
-              if echo " $WANT " | grep -q " $a "; then FILTERED="$FILTERED $a"; fi
-            done
-            echo "apps=$(echo "$FILTERED" | xargs)" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build versions string (changed apps vs dev)
-        id: ver
-        if: env.should_skip == 'false'
-        run: |
-          set -euo pipefail
-          VERS=""
-          if [ -z "${{ steps.diff.outputs.apps }}" ]; then
-            echo "변경된 앱이 없거나 감지 실패; 전체 목록 사용"
-            APP_LIST="${{ env.APPS }}"
-          else
-            APP_LIST="${{ steps.diff.outputs.apps }}"
-          fi
-          for APP in $APP_LIST; do
-            PKG="apps/$APP/package.json"
-            if [ -f "$PKG" ]; then
-              V=$(node -p "require('./$PKG').version")
-              VERS="$VERS, $APP@$V"
-            else
-              echo "skip: $PKG not found" >&2
-            fi
-          done
-          VERS=$(echo "$VERS" | sed 's/^, //')
-          echo "versions=$VERS" >> "$GITHUB_OUTPUT"
-
-      - name: Create Pull Request
-        if: env.should_skip == 'false'
-        run: |
-          TITLE="🔀 Staging -> Dev (${{ steps.ver.outputs.versions }})"
-          BODY="This PR merges **staging → dev**.\n\n**Changed apps:**\n$(printf '%s' "${{ steps.ver.outputs.versions }}" | tr ',' '\n' | sed 's/^/* /')"
-          gh pr create \
-            --repo "${{ github.repository }}" \
-            --title "$TITLE" \
-            --body  "$BODY" \
-            --assignee "${{ github.actor }}" \
-            --base dev --head staging
-        env:
-          GH_TOKEN: ${{ github.token }}
+            --title "$LINE" \
