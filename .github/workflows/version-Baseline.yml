@@ -116,22 +116,15 @@ jobs:
         if: steps.bump.outputs.nothing == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
         run: |
           TITLE="🚀 [${{ steps.map.outputs.slug }}] ${{ steps.bump.outputs.prev }} → ${{ steps.bump.outputs.next }}"
           BODY="$TITLE"
-
-          if gh pr list --base dev --head "${{ steps.meta.outputs.branch }}" --json number -q '.[0].number' >/dev/null; then
-            echo "PR already exists. Skipping create."
-          else
-            gh pr create \
-              --title "$TITLE" \
-              --body "$BODY" \
-              --base dev \
-              --head "${{ steps.meta.outputs.branch }}" \
-              --assignee "${{ github.actor }}" \
-              --repo "$GH_REPO"
-          fi
+          gh pr create \
+            --title "$TITLE" \
+            --body "$BODY" \
+            --base dev \
+            --head "${{ steps.meta.outputs.branch }}" \
+            --assignee "${{ github.actor }}"
 
       - name: Nothing to baseline
         if: steps.bump.outputs.nothing == 'true'
