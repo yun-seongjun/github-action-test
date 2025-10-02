@@ -19,7 +19,7 @@ jobs:
   create-staging:
     runs-on: ubuntu-latest
     env:
-      DRY_RUN: ${{ github.event.inputs.dry-run && 'true' || 'false' }}
+      DRY_RUN: ${{ fromJSON(github.event.inputs['dry-run']) && 'true' || 'false' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
