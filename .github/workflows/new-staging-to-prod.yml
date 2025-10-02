@@ -88,7 +88,7 @@ jobs:
             git config user.name  "GitHub Actions"
             git config user.email "github-actions@github.com"
             git add apps/*/package.json
-            git commit -m "release: RC to stable (guarded; no 0.0.0 downgrades)"
+            git commit -m "release: RC to stable"
             git push --force-with-lease origin HEAD:release/rc-to-stable
             HEAD_REF="release/rc-to-stable"
             CHANGED=true
