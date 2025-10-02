@@ -7,11 +7,6 @@ on:
         type: string
         description: sprint number
         required: true
-      dry-run:
-        type: boolean
-        description: "Simulate only (no pushes / no PR creation)"
-        required: false
-        default: true
 
 permissions:
   pull-requests: write
@@ -23,7 +18,6 @@ concurrency:
 
 env:
   APPS: "neubie-go neubie-order neubie-order-admin"
-  DRY_RUN: ${{ github.event.inputs.dry-run && 'true' || 'false' }}
 
 jobs:
   release-on-staging:
@@ -33,14 +27,6 @@ jobs:
       nothing: ${{ steps.release.outputs.nothing }}
 
     steps:
-      - name: DRY RUN notice
-        run: |
-          if [ "${{ env.DRY_RUN }}" = "true" ]; then
-            echo "⚠️ DRY RUN MODE ENABLED: Remote pushes/tags will be simulated only."
-          else
-            echo "✅ LIVE MODE: This run will push commits and tags to the remote."
-          fi
-
       - name: Checkout staging
         uses: actions/checkout@v4
         with:
@@ -125,19 +111,14 @@ jobs:
             fi
           done
 
-      - name: Push to staging & tags (LIVE)
-        if: env.DRY_RUN != 'true' && steps.release.outputs.nothing == 'false'
+          # 명시적으로 nothing=false 설정
+          echo "nothing=false" >> "$GITHUB_OUTPUT"
+
+      - name: Push to staging & tags
+        if: steps.release.outputs.nothing != 'true'
         run: |
           git push origin HEAD:staging
           git push origin --tags
-
-      - name: Push to staging & tags (DRY RUN)
-        if: env.DRY_RUN == 'true' && steps.release.outputs.nothing == 'false'
-        run: |
-          echo "DRY RUN: git push origin HEAD:staging"
-          git push origin HEAD:staging --dry-run || true
-          echo "DRY RUN: git push origin --tags"
-          git push origin --tags --dry-run || true
 
       - name: Mark no-op (when nothing to release)
         if: steps.release.outputs.nothing == 'true'
@@ -148,14 +129,6 @@ jobs:
     if: needs.release-on-staging.outputs.nothing != 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: DRY RUN notice
-        run: |
-          if [ "${{ env.DRY_RUN }}" = "true" ]; then
-            echo "⚠️ DRY RUN MODE ENABLED: PR creation to main will be simulated."
-          else
-            echo "✅ LIVE MODE: A real PR to main will be created if diffs exist."
-          fi
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -174,8 +147,8 @@ jobs:
             echo "should_skip_main=false" >> $GITHUB_ENV
           fi
 
-      - name: Create Pull Request (LIVE)
-        if: env.should_skip_main == 'false' && env.DRY_RUN != 'true'
+      - name: Create Pull Request
+        if: env.should_skip_main == 'false'
         run: |
           gh pr create --title "🚀 Sprint ${{ github.event.inputs.sprint-number }}" \
                        --body "Sprint ${{ github.event.inputs.sprint-number }}" \
@@ -184,25 +157,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
-      - name: Create Pull Request (DRY RUN)
-        if: env.should_skip_main == 'false' && env.DRY_RUN == 'true'
-        run: |
-          echo "DRY RUN: gh pr create --title '🚀 Sprint ${{ github.event.inputs.sprint-number }}' --base main --head staging (assignee ${{ github.actor }})"
-
-
   create-PR-staging-to-dev:
     needs: release-on-staging
     if: needs.release-on-staging.outputs.nothing != 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: DRY RUN notice
-        run: |
-          if [ "${{ env.DRY_RUN }}" = "true" ]; then
-            echo "⚠️ DRY RUN MODE ENABLED: PR creation to dev will be simulated."
-          else
-            echo "✅ LIVE MODE: A real PR to dev will be created if diffs exist."
-          fi
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -221,14 +180,12 @@ jobs:
             echo "should_skip=false" >> $GITHUB_ENV
           fi
 
-      - name: Create Pull Request (LIVE)
-        if: env.should_skip == 'false' && env.DRY_RUN != 'true'
+      - name: Create Pull Request
+        if: env.should_skip == 'false'
         run: |
-          gh pr create --title "🔀 Sprint ${{ github.event.inputs.sprint-number }}, staging -> dev" --body "Sprint ${{ github.event.inputs.sprint-number }}" --assignee "${{ github.actor }}" --base dev --head staging
+          gh pr create --title "🔀 Sprint ${{ github.event.inputs.sprint-number }}, staging -> dev" \
+                       --body "Sprint ${{ github.event.inputs.sprint-number }}" \
+                       --assignee "${{ github.actor }}" \
+                       --base dev --head staging
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-
-      - name: Create Pull Request (DRY RUN)
-        if: env.should_skip == 'false' && env.DRY_RUN == 'true'
-        run: |
-          echo "DRY RUN: gh pr create --title '🔀 Sprint ${{ github.event.inputs.sprint-number }}, staging -> dev' --base dev --head staging (assignee ${{ github.actor }})"
