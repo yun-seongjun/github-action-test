@@ -60,9 +60,14 @@ jobs:
       - name: Delete existing staging branch (remote)
         if: env.DRY_RUN != 'true'
         run: |
+          set -euo pipefail
+          echo "[check] listing remote 'staging'..."
           if git ls-remote --exit-code --heads origin staging >/dev/null 2>&1; then
-            echo "Deleting remote branch: staging"
-            git push origin --delete staging || true
+            echo "[delete] origin/staging"
+            # --delete 대신 :staging 문법(동일 의미). 실패시 바로 에러로 중단되게 함
+            git push origin :staging
+            echo "[verify] should be gone:"
+            git ls-remote --heads origin staging || echo "(deleted)"
           else
             echo "Remote branch 'staging' not found. Skip delete."
           fi
