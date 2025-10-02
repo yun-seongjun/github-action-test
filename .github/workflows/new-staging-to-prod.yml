@@ -1,4 +1,4 @@
-name: Staging -> Main, Dev
+name: Staging -> Main, Dev (RC strip + PR, simple, underscore branches)
 
 on:
   workflow_dispatch: {}
@@ -8,7 +8,6 @@ permissions:
   pull-requests: write
 
 env:
-  # Edit as needed
   APPS: "neubie-go neubie-order neubie-order-admin"
 
 jobs:
@@ -22,7 +21,7 @@ jobs:
           ref: staging
           fetch-depth: 0
 
-      - name: Setup Node (for reading/writing package.json)
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -32,18 +31,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CHANGED=false
+          if ! command -v node >/dev/null 2>&1; then
+            echo "Node not found"; exit 1
+          fi
 
+          CHANGED=false
           for APP in ${{ env.APPS }}; do
             PKG="apps/$APP/package.json"
             if [ ! -f "$PKG" ]; then
               echo "skip: $PKG not found" >&2
               continue
             fi
-
             CUR=$(node -p "require('./' + '${PKG}').version")
             STABLE=$(echo "$CUR" | sed 's/-rc\.[0-9]\+$//')
-
             if [ "$CUR" != "$STABLE" ]; then
               node -e "
                 const fs = require('fs');
@@ -60,17 +60,16 @@ jobs:
           done
 
           if [ -z "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
-            echo "No RC changes to commit."
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             git config user.name  "GitHub Actions"
             git config user.email "github-actions@github.com"
             git add apps/*/package.json
-            git commit -m "chore(release): strip RC to stable for target apps"
+            git commit -m "chore(release): strip RC to stable"
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build versions line (ALL apps, comma-separated with backticks)
+      - name: Build versions line (ALL apps)
         id: ver
         if: steps.strip.outputs.changed == 'true'
         shell: bash
@@ -78,44 +77,60 @@ jobs:
           set -euo pipefail
           APP_LIST="${{ env.APPS }}"
           PRETTY=""
-          SEP=""
+          RAW=""
+          SEP_P=""
+          SEP_R=""
           for APP in $APP_LIST; do
             PKG="apps/$APP/package.json"
-            if [ -f "$PKG" ]; then
-              V=$(node -p "require('./' + '${PKG}').version")
-              PRETTY="${PRETTY}${SEP}\`${APP}@${V}\`"
-              SEP=", "
-            else
-              echo "skip: $PKG not found" >&2
-            fi
+            [ -f "$PKG" ] || continue
+            V=$(node -p "require('./' + '${PKG}').version")
+            PRETTY="${PRETTY}${SEP_P}\`${APP}@${V}\`"
+            RAW="${RAW}${SEP_R}${APP}@${V}"
+            SEP_P=", "
+            SEP_R="_"
           done
           echo "pretty=$PRETTY" >> "$GITHUB_OUTPUT"
+          echo "raw=$RAW"       >> "$GITHUB_OUTPUT"
 
-      # === PR to main ===
+      - name: Build branch names (underscore, no slug/runid)
+        id: branch
+        if: steps.strip.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # RAW like: neubie-go@1.2.3_neubie-order@0.0.1
+          SRC="${{ steps.ver.outputs.raw }}"
+          BASE=$(printf "%s" "$SRC" \
+            | sed 's/@/-/g' \
+            | sed 's/\./_/g' \
+            | sed 's/[^A-Za-z0-9_-]/_/g' \
+            | tr '[:upper:]' '[:lower:]')
+          echo "main=release/${BASE}_main" >> "$GITHUB_OUTPUT"
+          echo "dev=release/${BASE}_dev"   >> "$GITHUB_OUTPUT"
+          echo "base=$BASE"                >> "$GITHUB_OUTPUT"
+
       - name: Create PR -> main
         if: steps.strip.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ github.token }}
           base: main
-          branch: release/rcstrip-${{ github.run_id }}-main
+          branch: ${{ steps.branch.outputs.main }}
           title: "Release: ${{ steps.ver.outputs.pretty }}"
           body:  "Release: ${{ steps.ver.outputs.pretty }}"
-          commit-message: "chore(release): strip RC to stable for target apps"
+          commit-message: "chore(release): strip RC to stable"
           delete-branch: true
-          # keep-branch is false by default; delete after merge if you prefer via repo settings
 
-      # === PR to dev ===
       - name: Create PR -> dev
         if: steps.strip.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ github.token }}
           base: dev
-          branch: release/rcstrip-${{ github.run_id }}-dev
+          branch: ${{ steps.branch.outputs.dev }}
           title: "Staging -> Dev: ${{ steps.ver.outputs.pretty }}"
           body:  "Staging -> Dev: ${{ steps.ver.outputs.pretty }}"
-          commit-message: "chore(release): strip RC to stable for target apps"
+          commit-message: "chore(release): strip RC to stable"
           delete-branch: true
 
       - name: No-op summary
