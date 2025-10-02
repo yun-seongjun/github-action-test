@@ -27,7 +27,6 @@ jobs:
         with:
           node-version: '20'
 
-      # RC를 발견하면 strip 후 별도 브랜치로 커밋/푸시, 없으면 head=staging
       - name: Prepare head branch (strip RC if needed)
         id: prep
         shell: bash
@@ -36,7 +35,6 @@ jobs:
           HEAD_REF="staging"
           CHANGED=false
 
-          # 1) RC strip (워킹트리에서 수정만)
           for APP in ${{ env.APPS }}; do
             PKG="apps/$APP/package.json"
             [ -f "$PKG" ] || { echo "skip: $PKG not found" >&2; continue; }
@@ -54,7 +52,6 @@ jobs:
             fi
           done
 
-          # 2) 변경이 있으면 release/rc-to-stable 브랜치로 커밋/푸시
           if [ -n "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
             git switch -c release/rc-to-stable || git switch release/rc-to-stable
             git config user.name  "GitHub Actions"
@@ -69,7 +66,6 @@ jobs:
           echo "head=$HEAD_REF"        >> "$GITHUB_OUTPUT"
           echo "rc_stripped=$CHANGED"  >> "$GITHUB_OUTPUT"
 
-      # PR 제목/본문 문자열 (백틱 + 콤마, 견고)
       - name: Build versions line (ALL apps)
         id: ver
         shell: bash
@@ -95,7 +91,6 @@ jobs:
           [ -n "$PRETTY" ] || PRETTY="(no app versions found)"
           echo "pretty=$PRETTY" >> "$GITHUB_OUTPUT"
 
-      # ===== main PR =====
       - name: Open/ensure PR to main
         shell: bash
         env:
@@ -103,19 +98,17 @@ jobs:
         run: |
           set -euo pipefail
           HEAD="${{ steps.prep.outputs.head }}"
-          # 1) base와 head에 차이가 없으면 스킵
           git fetch origin main "$HEAD"
           if git diff --quiet origin/main origin/"$HEAD"; then
             echo "No diff between $HEAD and main; skipping PR."
             exit 0
           fi
-          # 2) 기존 PR 있는지 확인
           if gh pr list --base main --head "$HEAD" --json number -q '.[0].number' | grep -q '^[0-9]\+$'; then
             echo "PR already exists for head=$HEAD -> main; skipping create."
             exit 0
           fi
-          # 3) 제목/본문 동일
-          printf -v LINE 'Release: %s' "${{ steps.ver.outputs.pretty }}"
+
+          printf -v LINE 'Release: %s' '${{ steps.ver.outputs.pretty }}'
           gh pr create \
             --repo "${{ github.repository }}" \
             --base main \
@@ -123,7 +116,6 @@ jobs:
             --title "$LINE" \
             --body  "$LINE"
 
-      # ===== dev PR =====
       - name: Open/ensure PR to dev
         shell: bash
         env:
@@ -140,7 +132,8 @@ jobs:
             echo "PR already exists for head=$HEAD -> dev; skipping create."
             exit 0
           fi
-          printf -v LINE 'Staging -> Dev: %s' "${{ steps.ver.outputs.pretty }}"
+
+          printf -v LINE 'Staging -> Dev: %s' '${{ steps.ver.outputs.pretty }}'
           gh pr create \
             --repo "${{ github.repository }}" \
             --base dev \
