@@ -1,12 +1,7 @@
 name: Staging -> Main, Dev (release) --new
 
 on:
-  workflow_dispatch:
-    inputs:
-      sprint-number:
-        type: string
-        description: sprint number
-        required: true
+  workflow_dispatch: {}
 
 permissions:
   pull-requests: write
@@ -39,6 +34,20 @@ jobs:
         run: |
           git config user.name  "GitHub Actions"
           git config user.email "github-actions@github.com"
+
+      - name: Read sprint from package.json version
+        id: sprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f package.json ]; then
+            SPRINT=$(node -p "require('./package.json').version")
+          else
+            echo "package.json not found at repo root; using 'unknown'"
+            SPRINT="unknown"
+          fi
+          echo "SPRINT=$SPRINT" >> "$GITHUB_ENV"
+          echo "sprint=$SPRINT"  >> "$GITHUB_OUTPUT"
 
       - name: Detect affected apps vs origin/main
         id: diff
@@ -100,7 +109,7 @@ jobs:
           fi
 
           git add apps/*/package.json
-          git commit -m "chore(release): $(IFS=,; echo "${REL_APPS[*]}") -> stable [sprint ${{ github.event.inputs.sprint-number }}]"
+          git commit -m "chore(release): $(IFS=,; echo "${REL_APPS[*]}") -> stable [version ${{ env.SPRINT }}]"
 
           echo "Tagging: ${TAGS[*]}"
           for T in "${TAGS[@]}"; do
@@ -136,6 +145,15 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Read sprint from package.json version
+        shell: bash
+        run: |
+          if [ -f package.json ]; then
+            echo "SPRINT=$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
+          else
+            echo "SPRINT=unknown" >> "$GITHUB_ENV"
+          fi
+
       - name: Check Differences Between Staging and Main
         run: |
           git fetch origin main staging
@@ -150,8 +168,8 @@ jobs:
       - name: Create Pull Request
         if: env.should_skip_main == 'false'
         run: |
-          gh pr create --title "🚀 Sprint ${{ github.event.inputs.sprint-number }}" \
-                       --body "Sprint ${{ github.event.inputs.sprint-number }}" \
+          gh pr create --title "🚀 Release ${SPRINT}" \
+                       --body  "Release ${SPRINT}" \
                        --assignee "${{ github.actor }}" \
                        --base main --head staging
         env:
@@ -169,6 +187,15 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Read sprint from package.json version
+        shell: bash
+        run: |
+          if [ -f package.json ]; then
+            echo "SPRINT=$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
+          else
+            echo "SPRINT=unknown" >> "$GITHUB_ENV"
+          fi
+
       - name: Check Differences Between Staging and Dev
         run: |
           git fetch origin dev staging
@@ -183,8 +210,8 @@ jobs:
       - name: Create Pull Request
         if: env.should_skip == 'false'
         run: |
-          gh pr create --title "🔀 Sprint ${{ github.event.inputs.sprint-number }}, staging -> dev" \
-                       --body "Sprint ${{ github.event.inputs.sprint-number }}" \
+          gh pr create --title "🔀 Staging -> Dev (${SPRINT})" \
+                       --body  "Release ${SPRINT}" \
                        --assignee "${{ github.actor }}" \
                        --base dev --head staging
         env:
