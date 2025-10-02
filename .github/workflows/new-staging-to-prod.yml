@@ -11,26 +11,32 @@ env:
   APPS: "neubie-go neubie-order neubie-order-admin"
 
 jobs:
-  rc-strip-and-pr:
+  staging-to-main-and-dev:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout staging
         uses: actions/checkout@v4
         with:
           ref: staging
           fetch-depth: 0
+          token: ${{ github.token }}
 
-      - name: Setup Node (read/write package.json)
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Strip -rc.N to stable (edit only, no commit)
-        id: strip
+      # RC를 발견하면 strip 후 별도 브랜치로 커밋/푸시, 없으면 head=staging
+      - name: Prepare head branch (strip RC if needed)
+        id: prep
         shell: bash
         run: |
           set -euo pipefail
+          HEAD_REF="staging"
           CHANGED=false
+
+          # 1) RC strip (워킹트리에서 수정만)
           for APP in ${{ env.APPS }}; do
             PKG="apps/$APP/package.json"
             [ -f "$PKG" ] || { echo "skip: $PKG not found" >&2; continue; }
@@ -43,103 +49,101 @@ jobs:
                 pkg.version = '$STABLE';
                 fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
               "
-              echo "release: $APP $CUR -> $STABLE"
+              echo "strip: $APP $CUR -> $STABLE"
               CHANGED=true
-            else
-              echo "already stable: $APP@$CUR"
             fi
           done
 
-          if [ -z "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+          # 2) 변경이 있으면 release/rc-to-stable 브랜치로 커밋/푸시
+          if [ -n "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
+            git switch -c release/rc-to-stable || git switch release/rc-to-stable
+            git config user.name  "GitHub Actions"
+            git config user.email "github-actions@github.com"
+            git add apps/*/package.json
+            git commit -m "release: RC to stable"
+            git push --force-with-lease origin HEAD:release/rc-to-stable
+            HEAD_REF="release/rc-to-stable"
+            CHANGED=true
           fi
 
-      - name: Build versions line (ALL apps, robust)
+          echo "head=$HEAD_REF"        >> "$GITHUB_OUTPUT"
+          echo "rc_stripped=$CHANGED"  >> "$GITHUB_OUTPUT"
+
+      # PR 제목/본문 문자열 (백틱 + 콤마, 견고)
+      - name: Build versions line (ALL apps)
         id: ver
-        if: steps.strip.outputs.changed == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          # Prefer jq to read JSON; fall back to node if jq is missing/empty
-          have_jq=true
-          command -v jq >/dev/null 2>&1 || have_jq=false
-
-          build_list () {
-            local list=""
-            local sep=""
-            for APP in ${{ env.APPS }}; do
-              local PKG="apps/$APP/package.json"
-              [ -f "$PKG" ] || continue
-              local V=""
-              if $have_jq; then
-                V=$(jq -r '.version // empty' "$PKG" 2>/dev/null || true)
-              fi
-              if [ -z "$V" ]; then
-                V=$(node -p "try{require('./$PKG').version||''}catch(e){''}")
-              fi
-              [ -n "$V" ] || continue
-              list="${list}${sep}\`${APP}@${V}\`"
-              sep=", "
-            done
-            printf "%s" "$list"
-          }
-
-          PRETTY=$(build_list)
-
-          # Fallback: discover apps/*/package.json if list is still empty
-          if [ -z "$PRETTY" ]; then
-            SEP=""
-            for PKG in apps/*/package.json; do
-              [ -f "$PKG" ] || continue
-              APP=$(basename "$(dirname "$PKG")")
-              V=""
-              if $have_jq; then
-                V=$(jq -r '.version // empty' "$PKG" 2>/dev/null || true)
-              fi
-              if [ -z "$V" ]; then
-                V=$(node -p "try{require('./$PKG').version||''}catch(e){''}")
-              fi
-              [ -n "$V" ] || continue
-              PRETTY="${PRETTY}${SEP}\`${APP}@${V}\`"
-              SEP=", "
-            done
-          fi
-
-          # Last resort guard to avoid empty titles/bodies
-          if [ -z "$PRETTY" ]; then
-            PRETTY="(no app versions found)"
-          fi
-
+          command -v jq >/dev/null 2>&1 && HAVE_JQ=1 || HAVE_JQ=0
+          PRETTY=""
+          SEP=""
+          for APP in ${{ env.APPS }}; do
+            PKG="apps/$APP/package.json"
+            [ -f "$PKG" ] || continue
+            V=""
+            if [ "$HAVE_JQ" = "1" ]; then
+              V=$(jq -r '.version // empty' "$PKG" 2>/dev/null || true)
+            fi
+            if [ -z "$V" ]; then
+              V=$(node -p "try{require('./$PKG').version||''}catch(e){''}")
+            fi
+            [ -n "$V" ] || continue
+            PRETTY="${PRETTY}${SEP}\`${APP}@${V}\`"
+            SEP=", "
+          done
+          [ -n "$PRETTY" ] || PRETTY="(no app versions found)"
           echo "pretty=$PRETTY" >> "$GITHUB_OUTPUT"
 
-      # === PR to main (fixed branch name) ===
-      - name: Create PR -> main
-        if: steps.strip.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ github.token }}
-          base: main
-          branch: release/rc-to-stable-main
-          title: "Release: ${{ steps.ver.outputs.pretty }}"
-          body:  "Release: ${{ steps.ver.outputs.pretty }}"
-          commit-message: "release: RC to stable"
-          delete-branch: true
+      # ===== main PR =====
+      - name: Open/ensure PR to main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          HEAD="${{ steps.prep.outputs.head }}"
+          # 1) base와 head에 차이가 없으면 스킵
+          git fetch origin main "$HEAD"
+          if git diff --quiet origin/main origin/"$HEAD"; then
+            echo "No diff between $HEAD and main; skipping PR."
+            exit 0
+          fi
+          # 2) 기존 PR 있는지 확인
+          if gh pr list --base main --head "$HEAD" --json number -q '.[0].number' | grep -q '^[0-9]\+$'; then
+            echo "PR already exists for head=$HEAD -> main; skipping create."
+            exit 0
+          fi
+          # 3) 제목/본문 동일
+          printf -v LINE 'Release: %s' "${{ steps.ver.outputs.pretty }}"
+          gh pr create \
+            --repo "${{ github.repository }}" \
+            --base main \
+            --head "$HEAD" \
+            --title "$LINE" \
+            --body  "$LINE"
 
-      # === PR to dev (fixed branch name) ===
-      - name: Create PR -> dev
-        if: steps.strip.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ github.token }}
-          base: dev
-          branch: release/rc-to-stable-dev
-          title: "Staging -> Dev: ${{ steps.ver.outputs.pretty }}"
-          body:  "Staging -> Dev: ${{ steps.ver.outputs.pretty }}"
-          commit-message: "release: RC to stable"
-          delete-branch: true
-
-      - name: No-op
-        if: steps.strip.outputs.changed != 'true'
-        run: echo "Nothing to strip. No PRs opened."
+      # ===== dev PR =====
+      - name: Open/ensure PR to dev
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          HEAD="${{ steps.prep.outputs.head }}"
+          git fetch origin dev "$HEAD"
+          if git diff --quiet origin/dev origin/"$HEAD"; then
+            echo "No diff between $HEAD and dev; skipping PR."
+            exit 0
+          fi
+          if gh pr list --base dev --head "$HEAD" --json number -q '.[0].number' | grep -q '^[0-9]\+$'; then
+            echo "PR already exists for head=$HEAD -> dev; skipping create."
+            exit 0
+          fi
+          printf -v LINE 'Staging -> Dev: %s' "${{ steps.ver.outputs.pretty }}"
+          gh pr create \
+            --repo "${{ github.repository }}" \
+            --base dev \
+            --head "$HEAD" \
+            --title "$LINE" \
+            --body  "$LINE"
