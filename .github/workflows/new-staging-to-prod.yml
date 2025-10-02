@@ -1,17 +1,7 @@
 name: Staging -> Main, Dev (release) --new
 
 on:
-  workflow_dispatch:
-    inputs:
-      sprint-number:
-        type: string
-        description: sprint number
-        required: true
-      dry-run:
-        type: boolean
-        description: "Simulate only (no pushes / no PR creation)"
-        required: false
-        default: true
+  workflow_dispatch: {}
 
 permissions:
   pull-requests: write
@@ -23,7 +13,6 @@ concurrency:
 
 env:
   APPS: "neubie-go neubie-order neubie-order-admin"
-  DRY_RUN: ${{ github.event.inputs.dry-run && 'true' || 'false' }}
 
 jobs:
   release-on-staging:
@@ -33,14 +22,6 @@ jobs:
       nothing: ${{ steps.release.outputs.nothing }}
 
     steps:
-      - name: DRY RUN notice
-        run: |
-          if [ "${{ env.DRY_RUN }}" = "true" ]; then
-            echo "⚠️ DRY RUN MODE ENABLED: Remote pushes/tags will be simulated only."
-          else
-            echo "✅ LIVE MODE: This run will push commits and tags to the remote."
-          fi
-
       - name: Checkout staging
         uses: actions/checkout@v4
         with:
@@ -53,6 +34,20 @@ jobs:
         run: |
           git config user.name  "GitHub Actions"
           git config user.email "github-actions@github.com"
+
+      - name: Read sprint from package.json version
+        id: sprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f package.json ]; then
+            SPRINT=$(node -p "require('./package.json').version")
+          else
+            echo "package.json not found at repo root; using 'unknown'"
+            SPRINT="unknown"
+          fi
+          echo "SPRINT=$SPRINT" >> "$GITHUB_ENV"
+          echo "sprint=$SPRINT"  >> "$GITHUB_OUTPUT"
 
       - name: Detect affected apps vs origin/main
         id: diff
@@ -114,7 +109,7 @@ jobs:
           fi
 
           git add apps/*/package.json
-          git commit -m "chore(release): $(IFS=,; echo "${REL_APPS[*]}") -> stable [sprint ${{ github.event.inputs.sprint-number }}]"
+          git commit -m "chore(release): $(IFS=,; echo "${REL_APPS[*]}") -> stable [version ${{ env.SPRINT }}]"
 
           echo "Tagging: ${TAGS[*]}"
           for T in "${TAGS[@]}"; do
@@ -125,19 +120,14 @@ jobs:
             fi
           done
 
-      - name: Push to staging & tags (LIVE)
-        if: env.DRY_RUN != 'true' && steps.release.outputs.nothing == 'false'
+          # 명시적으로 nothing=false 설정
+          echo "nothing=false" >> "$GITHUB_OUTPUT"
+
+      - name: Push to staging & tags
+        if: steps.release.outputs.nothing != 'true'
         run: |
           git push origin HEAD:staging
           git push origin --tags
-
-      - name: Push to staging & tags (DRY RUN)
-        if: env.DRY_RUN == 'true' && steps.release.outputs.nothing == 'false'
-        run: |
-          echo "DRY RUN: git push origin HEAD:staging"
-          git push origin HEAD:staging --dry-run || true
-          echo "DRY RUN: git push origin --tags"
-          git push origin --tags --dry-run || true
 
       - name: Mark no-op (when nothing to release)
         if: steps.release.outputs.nothing == 'true'
@@ -148,20 +138,21 @@ jobs:
     if: needs.release-on-staging.outputs.nothing != 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: DRY RUN notice
-        run: |
-          if [ "${{ env.DRY_RUN }}" = "true" ]; then
-            echo "⚠️ DRY RUN MODE ENABLED: PR creation to main will be simulated."
-          else
-            echo "✅ LIVE MODE: A real PR to main will be created if diffs exist."
-          fi
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: staging
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read sprint from package.json version
+        shell: bash
+        run: |
+          if [ -f package.json ]; then
+            echo "SPRINT=$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
+          else
+            echo "SPRINT=unknown" >> "$GITHUB_ENV"
+          fi
 
       - name: Check Differences Between Staging and Main
         run: |
@@ -174,41 +165,36 @@ jobs:
             echo "should_skip_main=false" >> $GITHUB_ENV
           fi
 
-      - name: Create Pull Request (LIVE)
-        if: env.should_skip_main == 'false' && env.DRY_RUN != 'true'
+      - name: Create Pull Request
+        if: env.should_skip_main == 'false'
         run: |
-          gh pr create --title "🚀 Sprint ${{ github.event.inputs.sprint-number }}" \
-                       --body "Sprint ${{ github.event.inputs.sprint-number }}" \
+          gh pr create --title "🚀 Release ${SPRINT}" \
+                       --body  "Release ${SPRINT}" \
                        --assignee "${{ github.actor }}" \
                        --base main --head staging
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-
-      - name: Create Pull Request (DRY RUN)
-        if: env.should_skip_main == 'false' && env.DRY_RUN == 'true'
-        run: |
-          echo "DRY RUN: gh pr create --title '🚀 Sprint ${{ github.event.inputs.sprint-number }}' --base main --head staging (assignee ${{ github.actor }})"
-
 
   create-PR-staging-to-dev:
     needs: release-on-staging
     if: needs.release-on-staging.outputs.nothing != 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: DRY RUN notice
-        run: |
-          if [ "${{ env.DRY_RUN }}" = "true" ]; then
-            echo "⚠️ DRY RUN MODE ENABLED: PR creation to dev will be simulated."
-          else
-            echo "✅ LIVE MODE: A real PR to dev will be created if diffs exist."
-          fi
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: staging
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read sprint from package.json version
+        shell: bash
+        run: |
+          if [ -f package.json ]; then
+            echo "SPRINT=$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
+          else
+            echo "SPRINT=unknown" >> "$GITHUB_ENV"
+          fi
 
       - name: Check Differences Between Staging and Dev
         run: |
@@ -221,14 +207,12 @@ jobs:
             echo "should_skip=false" >> $GITHUB_ENV
           fi
 
-      - name: Create Pull Request (LIVE)
-        if: env.should_skip == 'false' && env.DRY_RUN != 'true'
+      - name: Create Pull Request
+        if: env.should_skip == 'false'
         run: |
-          gh pr create --title "🔀 Sprint ${{ github.event.inputs.sprint-number }}, staging -> dev" --body "Sprint ${{ github.event.inputs.sprint-number }}" --assignee "${{ github.actor }}" --base dev --head staging
+          gh pr create --title "🔀 Staging -> Dev (${SPRINT})" \
+                       --body  "Release ${SPRINT}" \
+                       --assignee "${{ github.actor }}" \
+                       --base dev --head staging
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-
-      - name: Create Pull Request (DRY RUN)
-        if: env.should_skip == 'false' && env.DRY_RUN == 'true'
-        run: |
-          echo "DRY RUN: gh pr create --title '🔀 Sprint ${{ github.event.inputs.sprint-number }}, staging -> dev' --base dev --head staging (assignee ${{ github.actor }})"
