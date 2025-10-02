@@ -60,14 +60,9 @@ jobs:
       - name: Delete existing staging branch (remote)
         if: env.DRY_RUN != 'true'
         run: |
-          set -euo pipefail
-          echo "[check] listing remote 'staging'..."
           if git ls-remote --exit-code --heads origin staging >/dev/null 2>&1; then
-            echo "[delete] origin/staging"
-            # --delete 대신 :staging 문법(동일 의미). 실패시 바로 에러로 중단되게 함
-            git push origin :staging
-            echo "[verify] should be gone:"
-            git ls-remote --heads origin staging || echo "(deleted)"
+            echo "Deleting remote branch: staging"
+            git push origin --delete staging || true
           else
             echo "Remote branch 'staging' not found. Skip delete."
           fi
@@ -83,49 +78,6 @@ jobs:
           git branch -D staging 2>/dev/null || true
           git checkout -b staging dev
 
-      - name: Reset RC tags for affected apps (init rc=1)
-        if: ${{ steps.diff.outputs.apps != '' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          git fetch --tags --prune || true
-
-          echo "Affected apps: ${{ steps.diff.outputs.apps }}"
-
-          for APP in ${{ steps.diff.outputs.apps }}; do
-            PKG="apps/$APP/package.json"
-            if [ ! -f "$PKG" ]; then
-              echo "Skip: $PKG not found"
-              continue
-            fi
-
-            BASE=$(node -p "require('./'+process.argv[1]).version" "$PKG" | sed 's/-rc\.[0-9]\+$//')
-
-            MATCH="$APP@${BASE}-rc.*"
-            TO_DELETE=$(git tag -l "$MATCH" | xargs || true)
-
-            if [ -z "$TO_DELETE" ]; then
-              echo "No RC tags to delete for $APP ($MATCH)"
-              continue
-            fi
-
-            echo "Delete local tags: $TO_DELETE"
-            git tag -d $TO_DELETE || true
-
-            if [ "${{ env.DRY_RUN }}" != "true" ]; then
-              echo "Delete remote tags:"
-              for T in $TO_DELETE; do
-                git push origin :refs/tags/"$T" || true
-              done
-            else
-              echo "DRY RUN: would delete remote tags: $TO_DELETE"
-              for T in $TO_DELETE; do
-                git push origin :refs/tags/"$T" --dry-run || true
-              done
-            fi
-          done
-
       - name: Compute next RC and bump (affected apps only)
         if: ${{ steps.diff.outputs.apps != '' }}
         id: bump
@@ -133,57 +85,57 @@ jobs:
         run: |
           set -euo pipefail
 
-            if ! command -v node >/dev/null 2>&1; then
+          if ! command -v node >/dev/null 2>&1; then
             echo "Node.js not found on runner"; exit 1
-            fi
+          fi
 
           echo "Affected apps: ${{ steps.diff.outputs.apps }}"
 
-            TAGS=()
-            for APP in ${{ steps.diff.outputs.apps }}; do
+          TAGS=()
+          for APP in ${{ steps.diff.outputs.apps }}; do
             PKG="apps/$APP/package.json"
             if [ ! -f "$PKG" ]; then
-          echo "Skip: $PKG not found"
-            continue
+              echo "Skip: $PKG not found"
+              continue
             fi
 
             BASE=$(node -p "require('./$PKG').version" | sed 's/-rc\.[0-9]\+$//')
             LAST=$(git tag --list "$APP@${BASE}-rc.*" | sort -V | tail -n1)
             if [ -z "$LAST" ]; then
-            NEXT=1
+              NEXT=1
             else
-            NEXT=$(( $(echo "$LAST" | sed -E 's/.*-rc\.([0-9]+)/\1/') + 1 ))
+              NEXT=$(( $(echo "$LAST" | sed -E 's/.*-rc\.([0-9]+)/\1/') + 1 ))
             fi
             NEW="${BASE}-rc.${NEXT}"
 
             # package.json 업데이트
             node -e "
-            const fs = require('fs');
-            const p = '$PKG';
-            const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
-            pkg.version = '$NEW';
-            fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
+              const fs = require('fs');
+              const p = '$PKG';
+              const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
+              pkg.version = '$NEW';
+              fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
             "
 
             git add "$PKG"
             git commit -m "🚀 [$APP] $BASE → $NEW"
 
-          echo "Bumped $APP: $BASE -> $NEW"
+            echo "Bumped $APP: $BASE -> $NEW"
             TAGS+=("$APP@$NEW")
-            done
+          done
 
-            if [ ${#TAGS[@]} -eq 0 ]; then
+          if [ ${#TAGS[@]} -eq 0 ]; then
             echo "No package.json changes detected; skipping commit and tags."
             echo "nothing=true" >> "$GITHUB_OUTPUT"
             exit 0
-            fi
+          fi
 
           echo "Tagging: ${TAGS[*]}"
-            for T in "${TAGS[@]}"; do
+          for T in "${TAGS[@]}"; do
             git tag "$T" || true
-            done
+          done
 
-            echo "nothing=false" >> "$GITHUB_OUTPUT"
+          echo "nothing=false" >> "$GITHUB_OUTPUT"
 
       - name: Push staging branch (always)
         if: env.DRY_RUN != 'true'
