@@ -1,7 +1,17 @@
 name: Dev -> Staging
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      bump_level:
+        description: "Which semver part to bump before creating RC?"
+        type: choice
+        required: true
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
 
 permissions:
   contents: write
@@ -26,30 +36,24 @@ jobs:
           git config user.name  "GitHub Actions"
           git config user.email "github-actions@github.com"
 
-      # 기존 staging 삭제 후 dev에서 새로 생성
       - name: Prepare staging branch
         shell: bash
         run: |
           set -euo pipefail
 
-          # dev 최신화
           git fetch origin dev --tags
           git checkout dev
           git reset --hard origin/dev
 
-          # 로컬 staging 삭제
           git branch -D staging 2>/dev/null || true
 
-          # 원격 staging 삭제
           if git ls-remote --exit-code --heads origin staging >/dev/null 2>&1; then
             echo "Deleting remote staging branch"
             git push origin :staging
           fi
 
-          # dev에서 새 staging 생성
           git checkout -b staging
 
-      # 변경된 앱 탐지 (origin/main 기준)
       - name: Pick affected apps vs origin/main
         id: diff
         shell: bash
@@ -65,11 +69,12 @@ jobs:
           done
           echo "apps=$(echo "$FILTERED" | xargs)" >> "$GITHUB_OUTPUT"
 
-      # RC bump & commit & tag
       - name: Compute next RC and bump (affected apps only)
         if: ${{ steps.diff.outputs.apps != '' }}
         id: bump
         shell: bash
+        env:
+          BUMP_LEVEL: ${{ inputs.bump_level }}
         run: |
           set -euo pipefail
 
@@ -77,7 +82,24 @@ jobs:
             echo "Node.js not found on runner"; exit 1
           fi
 
+          echo "Bump level: ${BUMP_LEVEL}"
           echo "Affected apps: ${{ steps.diff.outputs.apps }}"
+
+          bump_semver () {
+            # $1: base version (e.g., 1.2.3), $2: level (major|minor|patch)
+            local VER="$1"
+            local LVL="$2"
+            local MAJ MIN PAT
+            IFS='.' read -r MAJ MIN PAT <<< "$VER"
+
+            MAJ=${MAJ:-0}; MIN=${MIN:-0}; PAT=${PAT:-0}
+            case "$LVL" in
+              major) MAJ=$((MAJ+1)); MIN=0; PAT=0 ;;
+              minor) MIN=$((MIN+1)); PAT=0 ;;
+              patch|*) PAT=$((PAT+1)) ;;
+            esac
+            echo "${MAJ}.${MIN}.${PAT}"
+          }
 
           TAGS=()
           for APP in ${{ steps.diff.outputs.apps }}; do
@@ -87,16 +109,19 @@ jobs:
               continue
             fi
 
-            BASE=$(node -p "require('./$PKG').version" | sed 's/-rc\.[0-9]\+$//')
-            LAST=$(git tag --list "$APP@${BASE}-rc.*" | sort -V | tail -n1)
+            CUR=$(node -p "require('./$PKG').version" | sed 's/-rc\.[0-9]\+$//')
+            BASE=$(echo "$CUR")
+
+            NEWBASE=$(bump_semver "$BASE" "$BUMP_LEVEL")
+
+            LAST=$(git tag --list "$APP@${NEWBASE}-rc.*" | sort -V | tail -n1)
             if [ -z "$LAST" ]; then
               NEXT=1
             else
               NEXT=$(( $(echo "$LAST" | sed -E 's/.*-rc\.([0-9]+)/\1/') + 1 ))
             fi
-            NEW="${BASE}-rc.${NEXT}"
+            NEW="${NEWBASE}-rc.${NEXT}"
 
-            # package.json 업데이트
             node -e "
               const fs = require('fs');
               const p = '$PKG';
@@ -106,9 +131,9 @@ jobs:
             "
 
             git add "$PKG"
-            git commit -m "🚀 [$APP] $BASE → $NEW"
+            git commit -m "🚀 [$APP] ${BASE} → ${NEW}"
 
-            echo "Bumped $APP: $BASE -> $NEW"
+            echo "Bumped $APP: ${BASE} -> ${NEW}"
             TAGS+=("$APP@$NEW")
           done
 
@@ -124,7 +149,6 @@ jobs:
 
           echo "nothing=false" >> "$GITHUB_OUTPUT"
 
-      # staging & tags push
       - name: Push staging branch
         run: |
           git push -u origin HEAD:staging
