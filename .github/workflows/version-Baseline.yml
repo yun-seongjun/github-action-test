@@ -116,24 +116,22 @@ jobs:
         if: steps.bump.outputs.nothing == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          TITLE="chore(version): ${{ steps.map.outputs.slug }} -> ${{ steps.bump.outputs.next }}"
-          BODY=$(
-            cat <<'EOT'
-          ## Version Baseline (single app)
-          - App: **${{ steps.map.outputs.pretty }}** (`${{ steps.map.outputs.slug }}`)
-          - From: `${{ steps.bump.outputs.prev }}`
-          - To:   `${{ steps.bump.outputs.next }}`
+          TITLE="🚀 [${{ steps.map.outputs.slug }}] ${{ steps.bump.outputs.prev }} → ${{ steps.bump.outputs.next }}"
+          BODY="$TITLE"
 
-          This PR updates the selected app's version in `dev`.
-          EOT
-          )
-          gh pr create \
-            --title "$TITLE" \
-            --body "$BODY" \
-            --base dev \
-            --head "${{ steps.meta.outputs.branch }}" \
-            --assignee "${{ github.actor }}"
+          if gh pr list --base dev --head "${{ steps.meta.outputs.branch }}" --json number -q '.[0].number' >/dev/null; then
+            echo "PR already exists. Skipping create."
+          else
+            gh pr create \
+              --title "$TITLE" \
+              --body "$BODY" \
+              --base dev \
+              --head "${{ steps.meta.outputs.branch }}" \
+              --assignee "${{ github.actor }}" \
+              --repo "$GH_REPO"
+          fi
 
       - name: Nothing to baseline
         if: steps.bump.outputs.nothing == 'true'
