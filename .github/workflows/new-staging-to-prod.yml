@@ -11,49 +11,40 @@ env:
   APPS: "neubie-go neubie-order neubie-order-admin"
 
 jobs:
-  rc-strip-and-create-prs:
+  rc-strip-and-pr:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout staging
         uses: actions/checkout@v4
         with:
           ref: staging
           fetch-depth: 0
-          token: ${{ github.token }}
 
-      - name: Setup Node
+      - name: Setup Node (read/write package.json)
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Strip -rc.N to stable (edit & commit)
+      - name: Strip -rc.N to stable (edit only, no commit)
         id: strip
         shell: bash
         run: |
           set -euo pipefail
           CHANGED=false
-          CHANGED_APPS=()
-
           for APP in ${{ env.APPS }}; do
             PKG="apps/$APP/package.json"
-            if [ ! -f "$PKG" ]; then
-              echo "skip: $PKG not found" >&2
-              continue
-            fi
+            [ -f "$PKG" ] || { echo "skip: $PKG not found" >&2; continue; }
             CUR=$(node -p "require('./' + '${PKG}').version")
             STABLE=$(echo "$CUR" | sed 's/-rc\.[0-9]\+$//')
             if [ "$CUR" != "$STABLE" ]; then
               node -e "
-                const fs = require('fs');
-                const p = '$PKG';
+                const fs = require('fs'); const p = '$PKG';
                 const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
                 pkg.version = '$STABLE';
                 fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
               "
               echo "release: $APP $CUR -> $STABLE"
               CHANGED=true
-              CHANGED_APPS+=("$APP")
             else
               echo "already stable: $APP@$CUR"
             fi
@@ -61,108 +52,94 @@ jobs:
 
           if [ -z "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "changed_apps=" >> "$GITHUB_OUTPUT"
           else
-            git config user.name  "GitHub Actions"
-            git config user.email "github-actions@github.com"
-            git add apps/*/package.json
-            git commit -m "release: RC to stable"
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "changed_apps=${CHANGED_APPS[*]}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build versions line (ALL apps, for PR title/body)
+      - name: Build versions line (ALL apps, robust)
         id: ver
         if: steps.strip.outputs.changed == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          PRETTY=""
-          SEP=""
-          for APP in ${{ env.APPS }}; do
-            PKG="apps/$APP/package.json"
-            [ -f "$PKG" ] || continue
-            V=$(node -p "require('./' + '${PKG}').version")
-            PRETTY="${PRETTY}${SEP}\`${APP}@${V}\`"
-            SEP=", "
-          done
-          echo "pretty=$PRETTY" >> "$GITHUB_OUTPUT"
+          # Prefer jq to read JSON; fall back to node if jq is missing/empty
+          have_jq=true
+          command -v jq >/dev/null 2>&1 || have_jq=false
 
-      - name: Build branch names (underscore; ONLY changed apps)
-        id: branch
-        if: steps.strip.outputs.changed == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -z "${{ steps.strip.outputs.changed_apps }}" ]; then
-            echo "No changed apps captured; aborting." >&2
-            exit 1
+          build_list () {
+            local list=""
+            local sep=""
+            for APP in ${{ env.APPS }}; do
+              local PKG="apps/$APP/package.json"
+              [ -f "$PKG" ] || continue
+              local V=""
+              if $have_jq; then
+                V=$(jq -r '.version // empty' "$PKG" 2>/dev/null || true)
+              fi
+              if [ -z "$V" ]; then
+                V=$(node -p "try{require('./$PKG').version||''}catch(e){''}")
+              fi
+              [ -n "$V" ] || continue
+              list="${list}${sep}\`${APP}@${V}\`"
+              sep=", "
+            done
+            printf "%s" "$list"
+          }
+
+          PRETTY=$(build_list)
+
+          # Fallback: discover apps/*/package.json if list is still empty
+          if [ -z "$PRETTY" ]; then
+            SEP=""
+            for PKG in apps/*/package.json; do
+              [ -f "$PKG" ] || continue
+              APP=$(basename "$(dirname "$PKG")")
+              V=""
+              if $have_jq; then
+                V=$(jq -r '.version // empty' "$PKG" 2>/dev/null || true)
+              fi
+              if [ -z "$V" ]; then
+                V=$(node -p "try{require('./$PKG').version||''}catch(e){''}")
+              fi
+              [ -n "$V" ] || continue
+              PRETTY="${PRETTY}${SEP}\`${APP}@${V}\`"
+              SEP=", "
+            done
           fi
 
-          RAW=""
-          SEP=""
-          for APP in ${{ steps.strip.outputs.changed_apps }}; do
-            PKG="apps/$APP/package.json"
-            [ -f "$PKG" ] || continue
-            V=$(node -p "require('./' + '${PKG}').version")
-            RAW="${RAW}${SEP}${APP}@${V}"
-            SEP="_"
-          done
+          # Last resort guard to avoid empty titles/bodies
+          if [ -z "$PRETTY" ]; then
+            PRETTY="(no app versions found)"
+          fi
 
-          BASE=$(printf "%s" "$RAW" \
-            | sed 's/@/-/g' \
-            | sed 's/\./_/g' \
-            | sed 's/[^A-Za-z0-9_-]/_/g' \
-            | tr '[:upper:]' '[:lower:]')
+          echo "pretty=$PRETTY" >> "$GITHUB_OUTPUT"
 
-          echo "main=release/${BASE}_main" >> "$GITHUB_OUTPUT"
-          echo "dev=release/${BASE}_dev"   >> "$GITHUB_OUTPUT"
-          echo "base=$BASE"                >> "$GITHUB_OUTPUT"
-
-      - name: Push release branches (force-with-lease to avoid non-FF)
-        if: steps.strip.outputs.changed == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          for B in "${{ steps.branch.outputs.main }}" "${{ steps.branch.outputs.dev }}"; do
-            if git ls-remote --heads origin "$B" | grep -q "$B"; then
-              echo "Remote branch $B exists; updating with --force-with-lease"
-            else
-              echo "Creating remote branch $B"
-            fi
-            git push --force-with-lease origin HEAD:"$B"
-          done
-
+      # === PR to main (fixed branch name) ===
       - name: Create PR -> main
         if: steps.strip.outputs.changed == 'true'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          printf -v LINE 'Release: %s' "${{ steps.ver.outputs.pretty }}"
-          gh pr create \
-            --repo "${{ github.repository }}" \
-            --title "$LINE" \
-            --body  "$LINE" \
-            --base main \
-            --head "${{ steps.branch.outputs.main }}"
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ github.token }}
+          base: main
+          branch: release/rc-to-stable-main
+          title: "Release: ${{ steps.ver.outputs.pretty }}"
+          body:  "Release: ${{ steps.ver.outputs.pretty }}"
+          commit-message: "release: RC to stable"
+          delete-branch: true
 
+      # === PR to dev (fixed branch name) ===
       - name: Create PR -> dev
         if: steps.strip.outputs.changed == 'true'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          printf -v LINE 'Staging -> Dev: %s' "${{ steps.ver.outputs.pretty }}"
-          gh pr create \
-            --repo "${{ github.repository }}" \
-            --title "$LINE" \
-            --body  "$LINE" \
-            --base dev \
-            --head "${{ steps.branch.outputs.dev }}"
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ github.token }}
+          base: dev
+          branch: release/rc-to-stable-dev
+          title: "Staging -> Dev: ${{ steps.ver.outputs.pretty }}"
+          body:  "Staging -> Dev: ${{ steps.ver.outputs.pretty }}"
+          commit-message: "release: RC to stable"
+          delete-branch: true
 
-      - name: No-op summary
+      - name: No-op
         if: steps.strip.outputs.changed != 'true'
         run: echo "Nothing to strip. No PRs opened."
