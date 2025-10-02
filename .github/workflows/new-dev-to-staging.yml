@@ -1,7 +1,28 @@
-name: Dev -> Staging
+name: Dev -> Staging --new
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      bump_level:
+        description: "Version bump"
+        type: choice
+        required: true
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      apps:
+        description: "Target app"
+        type: choice
+        required: true
+        default: auto
+        options:
+          - auto
+          - all
+          - neubie-go
+          - neubie-order
+          - neubie-order-admin
 
 permissions:
   contents: write
@@ -12,7 +33,6 @@ env:
 jobs:
   create-staging:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository (dev)
         uses: actions/checkout@v4
@@ -26,77 +46,82 @@ jobs:
           git config user.name  "GitHub Actions"
           git config user.email "github-actions@github.com"
 
-      # 기존 staging 삭제 후 dev에서 새로 생성
       - name: Prepare staging branch
         shell: bash
         run: |
           set -euo pipefail
-
-          # dev 최신화
           git fetch origin dev --tags
           git checkout dev
           git reset --hard origin/dev
-
-          # 로컬 staging 삭제
           git branch -D staging 2>/dev/null || true
-
-          # 원격 staging 삭제
           if git ls-remote --exit-code --heads origin staging >/dev/null 2>&1; then
-            echo "Deleting remote staging branch"
             git push origin :staging
           fi
-
-          # dev에서 새 staging 생성
           git checkout -b staging
 
-      # 변경된 앱 탐지 (origin/main 기준)
-      - name: Pick affected apps vs origin/main
+      - name: Resolve target apps (auto/all/single)
         id: diff
         shell: bash
+        env:
+          INPUT_APPS: ${{ inputs.apps }}
         run: |
           set -euo pipefail
           git fetch origin main --tags || true
-          CHANGED=$(git diff --name-only origin/main..HEAD || true)
-          APPS=$(echo "$CHANGED" | awk -F/ '/^apps\//{print $2}' | sort -u | xargs)
-          WANT="${APPS:-}"
+          CATALOG="${{ env.APPS }}"
+          normalize_list () { tr ',\n' '  ' | xargs -n1 | sort -u | xargs; }
+          if [ "$INPUT_APPS" = "auto" ]; then
+            CHANGED=$(git diff --name-only origin/main..HEAD || true)
+            WANT=$(echo "$CHANGED" | awk -F/ '/^apps\//{print $2}' | normalize_list || true)
+          elif [ "$INPUT_APPS" = "all" ]; then
+            WANT="$CATALOG"
+          else
+            WANT="$INPUT_APPS"
+          fi
           FILTERED=""
-          for a in ${{ env.APPS }}; do
+          for a in $CATALOG; do
             if echo " $WANT " | grep -q " $a "; then FILTERED="$FILTERED $a"; fi
           done
-          echo "apps=$(echo "$FILTERED" | xargs)" >> "$GITHUB_OUTPUT"
+          FILTERED=$(echo "$FILTERED" | xargs || true)
+          echo "apps=$FILTERED" >> "$GITHUB_OUTPUT"
 
-      # RC bump & commit & tag
-      - name: Compute next RC and bump (affected apps only)
+      - name: Compute next RC and bump (selected apps only)
         if: ${{ steps.diff.outputs.apps != '' }}
         id: bump
         shell: bash
+        env:
+          BUMP_LEVEL: ${{ inputs.bump_level }}
         run: |
           set -euo pipefail
-
           if ! command -v node >/dev/null 2>&1; then
             echo "Node.js not found on runner"; exit 1
           fi
-
-          echo "Affected apps: ${{ steps.diff.outputs.apps }}"
-
+          bump_semver () {
+            local VER="$1"; local LVL="$2"; local MAJ MIN PAT
+            IFS='.' read -r MAJ MIN PAT <<< "$VER"
+            MAJ=${MAJ:-0}; MIN=${MIN:-0}; PAT=${PAT:-0}
+            case "$LVL" in
+              major) MAJ=$((MAJ+1)); MIN=0; PAT=0 ;;
+              minor) MIN=$((MIN+1)); PAT=0 ;;
+              patch|*) PAT=$((PAT+1)) ;;
+            esac
+            echo "${MAJ}.${MIN}.${PAT}"
+          }
           TAGS=()
           for APP in ${{ steps.diff.outputs.apps }}; do
             PKG="apps/$APP/package.json"
             if [ ! -f "$PKG" ]; then
-              echo "Skip: $PKG not found"
               continue
             fi
-
-            BASE=$(node -p "require('./$PKG').version" | sed 's/-rc\.[0-9]\+$//')
-            LAST=$(git tag --list "$APP@${BASE}-rc.*" | sort -V | tail -n1)
+            CUR=$(node -p "require('./$PKG').version" | sed 's/-rc\.[0-9]\+$//')
+            BASE="$CUR"
+            NEWBASE=$(bump_semver "$BASE" "$BUMP_LEVEL")
+            LAST=$(git tag --list "$APP@${NEWBASE}-rc.*" | sort -V | tail -n1)
             if [ -z "$LAST" ]; then
               NEXT=1
             else
               NEXT=$(( $(echo "$LAST" | sed -E 's/.*-rc\.([0-9]+)/\1/') + 1 ))
             fi
-            NEW="${BASE}-rc.${NEXT}"
-
-            # package.json 업데이트
+            NEW="${NEWBASE}-rc.${NEXT}"
             node -e "
               const fs = require('fs');
               const p = '$PKG';
@@ -104,27 +129,19 @@ jobs:
               pkg.version = '$NEW';
               fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
             "
-
             git add "$PKG"
-            git commit -m "🚀 [$APP] $BASE → $NEW"
-
-            echo "Bumped $APP: $BASE -> $NEW"
+            git commit -m "🚀 [$APP] ${BASE} → ${NEW}"
             TAGS+=("$APP@$NEW")
           done
-
           if [ ${#TAGS[@]} -eq 0 ]; then
             echo "nothing=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
-          echo "Tagging: ${TAGS[*]}"
           for T in "${TAGS[@]}"; do
             git tag "$T" || true
           done
-
           echo "nothing=false" >> "$GITHUB_OUTPUT"
 
-      # staging & tags push
       - name: Push staging branch
         run: |
           git push -u origin HEAD:staging
