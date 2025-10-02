@@ -1,234 +1,163 @@
-name: Staging -> Main, Dev (release) --new
+name: Staging -> Main, Dev
 
 on:
-  workflow_dispatch:
-    inputs:
-      sprint-number:
-        type: string
-        description: sprint number
-        required: true
-      dry-run:
-        type: boolean
-        description: "Simulate only (no pushes / no PR creation)"
-        required: false
-        default: true
+  workflow_dispatch: {}
 
 permissions:
   pull-requests: write
   contents: write
 
-concurrency:
-  group: release-staging-${{ github.ref }}
-  cancel-in-progress: false
-
 env:
+  # 관리 대상 앱 목록(필요시 추가/변경)
   APPS: "neubie-go neubie-order neubie-order-admin"
-  DRY_RUN: ${{ github.event.inputs.dry-run && 'true' || 'false' }}
 
 jobs:
-  release-on-staging:
-    name: Strip RC on staging and tag
+  # staging 브랜치를 main에 머지하는 PR 생성
+  create-PR-staging-to-main:
     runs-on: ubuntu-latest
-    outputs:
-      nothing: ${{ steps.release.outputs.nothing }}
-
     steps:
-      - name: DRY RUN notice
-        run: |
-          if [ "${{ env.DRY_RUN }}" = "true" ]; then
-            echo "⚠️ DRY RUN MODE ENABLED: Remote pushes/tags will be simulated only."
-          else
-            echo "✅ LIVE MODE: This run will push commits and tags to the remote."
-          fi
-
       - name: Checkout staging
         uses: actions/checkout@v4
         with:
           ref: staging
           fetch-depth: 0
-          fetch-tags: true
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Configure git
-        run: |
-          git config user.name  "GitHub Actions"
-          git config user.email "github-actions@github.com"
-
-      - name: Detect affected apps vs origin/main
-        id: diff
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin main --tags || true
-          CHANGED=$(git diff --name-only origin/main...HEAD || true)
-          APPS=$(echo "$CHANGED" | awk -F/ '/^apps\//{print $2}' | sort -u | xargs)
-          WANT="${APPS:-}"
-          FILTERED=""
-          for a in ${{ env.APPS }}; do
-            if echo " $WANT " | grep -q " $a "; then FILTERED="$FILTERED $a"; fi
-          done
-          echo "apps=$(echo "$FILTERED" | xargs)" >> "$GITHUB_OUTPUT"
-
-      - name: Strip RC & tag (only affected apps)
-        if: ${{ steps.diff.outputs.apps != '' }}
-        id: release
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          command -v node >/dev/null 2>&1 || { echo "Node.js not found on runner"; exit 1; }
-
-          echo "Affected apps: ${{ steps.diff.outputs.apps }}"
-
-          REL_APPS=()
-          TAGS=()
-
-          for APP in ${{ steps.diff.outputs.apps }}; do
-            PKG="apps/$APP/package.json"
-            if [ ! -f "$PKG" ]; then
-              echo "Skip: $PKG not found"
-              continue
-            fi
-            CUR=$(node -p "require('./$PKG').version")
-            STABLE=$(echo "$CUR" | sed 's/-rc\.[0-9]\+$//')
-            if [ "$CUR" = "$STABLE" ]; then
-              echo "Already stable: $APP@$CUR"
-              continue
-            fi
-            node -e "
-              const fs = require('fs');
-              const p = '$PKG';
-              const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
-              pkg.version = '$STABLE';
-              fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
-            "
-            echo "Release $APP: $CUR -> $STABLE"
-            REL_APPS+=("$APP")
-            TAGS+=("$APP@$STABLE")
-          done
-
-          if [ -z "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
-            echo "No package.json changes; skip tagging/push."
-            echo "nothing=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          git add apps/*/package.json
-          git commit -m "chore(release): $(IFS=,; echo "${REL_APPS[*]}") -> stable [sprint ${{ github.event.inputs.sprint-number }}]"
-
-          echo "Tagging: ${TAGS[*]}"
-          for T in "${TAGS[@]}"; do
-            if git rev-parse -q --verify "refs/tags/$T" >/dev/null; then
-              echo "Tag exists, skip: $T"
-            else
-              git tag "$T"
-            fi
-          done
-
-      - name: Push to staging & tags (LIVE)
-        if: env.DRY_RUN != 'true' && steps.release.outputs.nothing == 'false'
-        run: |
-          git push origin HEAD:staging
-          git push origin --tags
-
-      - name: Push to staging & tags (DRY RUN)
-        if: env.DRY_RUN == 'true' && steps.release.outputs.nothing == 'false'
-        run: |
-          echo "DRY RUN: git push origin HEAD:staging"
-          git push origin HEAD:staging --dry-run || true
-          echo "DRY RUN: git push origin --tags"
-          git push origin --tags --dry-run || true
-
-      - name: Mark no-op (when nothing to release)
-        if: steps.release.outputs.nothing == 'true'
-        run: echo "Nothing to release."
-
-  create-PR-staging-to-main:
-    needs: release-on-staging
-    if: needs.release-on-staging.outputs.nothing != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: DRY RUN notice
-        run: |
-          if [ "${{ env.DRY_RUN }}" = "true" ]; then
-            echo "⚠️ DRY RUN MODE ENABLED: PR creation to main will be simulated."
-          else
-            echo "✅ LIVE MODE: A real PR to main will be created if diffs exist."
-          fi
-
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Setup Node (to read package.json)
+        uses: actions/setup-node@v4
         with:
-          ref: staging
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          node-version: '20'
 
       - name: Check Differences Between Staging and Main
+        id: diff
         run: |
+          set -euo pipefail
           git fetch origin main staging
           if git diff --quiet origin/main origin/staging; then
             echo "No changes detected between staging and main. Skipping PR creation."
             echo "should_skip_main=true" >> $GITHUB_ENV
+            echo "apps=" >> "$GITHUB_OUTPUT"
           else
             echo "Changes detected. Proceeding with PR creation."
             echo "should_skip_main=false" >> $GITHUB_ENV
+            CHANGED=$(git diff --name-only origin/main...origin/staging || true)
+            # 변경된 앱들만 추출
+            CHANGED_APPS=$(echo "$CHANGED" | awk -F/ '/^apps\//{print $2}' | sort -u | xargs)
+            # 대상 앱 목록으로 필터링
+            WANT="${CHANGED_APPS:-}"
+            FILTERED=""
+            for a in ${{ env.APPS }}; do
+              if echo " $WANT " | grep -q " $a "; then FILTERED="$FILTERED $a"; fi
+            done
+            echo "apps=$(echo "$FILTERED" | xargs)" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create Pull Request (LIVE)
-        if: env.should_skip_main == 'false' && env.DRY_RUN != 'true'
+      - name: Build versions string (changed apps vs main)
+        id: ver
+        if: env.should_skip_main == 'false'
         run: |
-          gh pr create --title "🚀 Sprint ${{ github.event.inputs.sprint-number }}" \
-                       --body "Sprint ${{ github.event.inputs.sprint-number }}" \
-                       --assignee "${{ github.actor }}" \
-                       --base main --head staging
+          set -euo pipefail
+          VERS=""
+          if [ -z "${{ steps.diff.outputs.apps }}" ]; then
+            echo "No changed apps detected or detection failed; using the full app list."
+            APP_LIST="${{ env.APPS }}"
+          else
+            APP_LIST="${{ steps.diff.outputs.apps }}"
+          fi
+          for APP in $APP_LIST; do
+            PKG="apps/$APP/package.json"
+            if [ -f "$PKG" ]; then
+              V=$(node -p "require('./$PKG').version")
+              VERS="$VERS, $APP@$V"
+            else
+              echo "skip: $PKG not found" >&2
+            fi
+          done
+          VERS=$(echo "$VERS" | sed 's/^, //')  # remove leading comma and space
+          echo "versions=$VERS" >> "$GITHUB_OUTPUT"
+
+      - name: Create Pull Request
+        if: env.should_skip_main == 'false'
+        run: |
+          TITLE="🚀 Release: ${{ steps.ver.outputs.versions }}"
+          gh pr create \
+            --repo "${{ github.repository }}" \
+            --title "$TITLE" \
+            --body  "$TITLE" \
+            --assignee "${{ github.actor }}" \
+            --base main --head staging
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
 
-      - name: Create Pull Request (DRY RUN)
-        if: env.should_skip_main == 'false' && env.DRY_RUN == 'true'
-        run: |
-          echo "DRY RUN: gh pr create --title '🚀 Sprint ${{ github.event.inputs.sprint-number }}' --base main --head staging (assignee ${{ github.actor }})"
-
-
+  # staging 브랜치를 dev에 머지하는 PR 생성
   create-PR-staging-to-dev:
-    needs: release-on-staging
-    if: needs.release-on-staging.outputs.nothing != 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: DRY RUN notice
-        run: |
-          if [ "${{ env.DRY_RUN }}" = "true" ]; then
-            echo "⚠️ DRY RUN MODE ENABLED: PR creation to dev will be simulated."
-          else
-            echo "✅ LIVE MODE: A real PR to dev will be created if diffs exist."
-          fi
-
-      - name: Checkout
+      - name: Checkout staging
         uses: actions/checkout@v4
         with:
           ref: staging
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node (to read package.json)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Check Differences Between Staging and Dev
+        id: diff
         run: |
+          set -euo pipefail
           git fetch origin dev staging
           if git diff --quiet origin/dev origin/staging; then
             echo "No changes detected between staging and dev. Skipping PR creation."
             echo "should_skip=true" >> $GITHUB_ENV
+            echo "apps=" >> "$GITHUB_OUTPUT"
           else
             echo "Changes detected. Proceeding with PR creation."
             echo "should_skip=false" >> $GITHUB_ENV
+            CHANGED=$(git diff --name-only origin/dev...origin/staging || true)
+            CHANGED_APPS=$(echo "$CHANGED" | awk -F/ '/^apps\//{print $2}' | sort -u | xargs)
+            WANT="${CHANGED_APPS:-}"
+            FILTERED=""
+            for a in ${{ env.APPS }}; do
+              if echo " $WANT " | grep -q " $a "; then FILTERED="$FILTERED $a"; fi
+            done
+            echo "apps=$(echo "$FILTERED" | xargs)" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create Pull Request (LIVE)
-        if: env.should_skip == 'false' && env.DRY_RUN != 'true'
+      - name: Build versions string (changed apps vs dev)
+        id: ver
+        if: env.should_skip == 'false'
         run: |
-          gh pr create --title "🔀 Sprint ${{ github.event.inputs.sprint-number }}, staging -> dev" --body "Sprint ${{ github.event.inputs.sprint-number }}" --assignee "${{ github.actor }}" --base dev --head staging
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          set -euo pipefail
+          VERS=""
+          if [ -z "${{ steps.diff.outputs.apps }}" ]; then
+            echo "No changed apps detected or detection failed; using the full app list."
+            APP_LIST="${{ env.APPS }}"
+          else
+            APP_LIST="${{ steps.diff.outputs.apps }}"
+          fi
+          for APP in $APP_LIST; do
+            PKG="apps/$APP/package.json"
+            if [ -f "$PKG" ]; then
+              V=$(node -p "require('./$PKG').version")
+              VERS="$VERS, $APP@$V"
+            else
+              echo "skip: $PKG not found" >&2
+            fi
+          done
+          VERS=$(echo "$VERS" | sed 's/^, //')
+          echo "versions=$VERS" >> "$GITHUB_OUTPUT"
 
-      - name: Create Pull Request (DRY RUN)
-        if: env.should_skip == 'false' && env.DRY_RUN == 'true'
+      - name: Create Pull Request
+        if: env.should_skip == 'false'
         run: |
-          echo "DRY RUN: gh pr create --title '🔀 Sprint ${{ github.event.inputs.sprint-number }}, staging -> dev' --base dev --head staging (assignee ${{ github.actor }})"
+          TITLE="🔀 Staging -> Dev (${{ steps.ver.outputs.versions }})"
+          gh pr create \
+            --repo "${{ github.repository }}" \
+            --title "$TITLE" \
+            --body  "$TITLE" \
+            --assignee "${{ github.actor }}" \
+            --base dev --head staging
+        env:
+          GH_TOKEN: ${{ github.token }}

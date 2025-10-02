@@ -102,7 +102,7 @@ jobs:
           "
 
           git add "$PKG_PATH"
-          git commit -m "🚀 [${{ steps.map.outputs.slug }}] $TARGET → $CUR"
+          git commit -m "🚀 [${{ steps.map.outputs.slug }}] $CUR → $TARGET"
           echo "prev=$CUR"     >> "$GITHUB_OUTPUT"
           echo "next=$TARGET"  >> "$GITHUB_OUTPUT"
           echo "nothing=false" >> "$GITHUB_OUTPUT"
