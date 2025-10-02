@@ -1,4 +1,4 @@
-name: Staging -> Main, Dev
+name: Staging -> Main, Dev --new
 
 on:
   workflow_dispatch: {}
