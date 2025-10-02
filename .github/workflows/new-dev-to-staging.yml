@@ -83,6 +83,49 @@ jobs:
           git branch -D staging 2>/dev/null || true
           git checkout -b staging dev
 
+      - name: Reset RC tags for affected apps (init rc=1)
+        if: ${{ steps.diff.outputs.apps != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch --tags --prune || true
+
+          echo "Affected apps: ${{ steps.diff.outputs.apps }}"
+
+          for APP in ${{ steps.diff.outputs.apps }}; do
+            PKG="apps/$APP/package.json"
+            if [ ! -f "$PKG" ]; then
+              echo "Skip: $PKG not found"
+              continue
+            fi
+
+            BASE=$(node -p "require('./'+process.argv[1]).version" "$PKG" | sed 's/-rc\.[0-9]\+$//')
+
+            MATCH="$APP@${BASE}-rc.*"
+            TO_DELETE=$(git tag -l "$MATCH" | xargs || true)
+
+            if [ -z "$TO_DELETE" ]; then
+              echo "No RC tags to delete for $APP ($MATCH)"
+              continue
+            fi
+
+            echo "Delete local tags: $TO_DELETE"
+            git tag -d $TO_DELETE || true
+
+            if [ "${{ env.DRY_RUN }}" != "true" ]; then
+              echo "Delete remote tags:"
+              for T in $TO_DELETE; do
+                git push origin :refs/tags/"$T" || true
+              done
+            else
+              echo "DRY RUN: would delete remote tags: $TO_DELETE"
+              for T in $TO_DELETE; do
+                git push origin :refs/tags/"$T" --dry-run || true
+              done
+            fi
+          done
+
       - name: Compute next RC and bump (affected apps only)
         if: ${{ steps.diff.outputs.apps != '' }}
         id: bump
