@@ -1,13 +1,7 @@
-name: Dev -> Staging --new
+name: Dev -> Staging
 
 on:
-  workflow_dispatch:
-    inputs:
-      dry-run:
-        description: "Do not push/delete remote branch or tags (simulate only)"
-        type: boolean
-        required: false
-        default: true
+  workflow_dispatch: {}
 
 permissions:
   contents: write
@@ -18,30 +12,44 @@ env:
 jobs:
   create-staging:
     runs-on: ubuntu-latest
-    env:
-      DRY_RUN: ${{ fromJSON(github.event.inputs['dry-run']) && 'true' || 'false' }}
+
     steps:
-      - name: Checkout repository
+      - name: Checkout repository (dev)
         uses: actions/checkout@v4
         with:
           ref: dev
           fetch-depth: 0
           fetch-tags: true
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure Git
         run: |
-          git config user.name "GitHub Actions"
+          git config user.name  "GitHub Actions"
           git config user.email "github-actions@github.com"
 
-      - name: DRY RUN notice
+      # 기존 staging 삭제 후 dev에서 새로 생성
+      - name: Prepare staging branch
+        shell: bash
         run: |
-          if [ "${{ env.DRY_RUN }}" = "true" ]; then
-            echo "⚠️ DRY RUN MODE ENABLED: Remote branch/tag changes will be simulated only."
-          else
-            echo "✅ LIVE MODE: This run will push branches and tags to the remote."
+          set -euo pipefail
+
+          # dev 최신화
+          git fetch origin dev --tags
+          git checkout dev
+          git reset --hard origin/dev
+
+          # 로컬 staging 삭제
+          git branch -D staging 2>/dev/null || true
+
+          # 원격 staging 삭제
+          if git ls-remote --exit-code --heads origin staging >/dev/null 2>&1; then
+            echo "Deleting remote staging branch"
+            git push origin :staging
           fi
 
+          # dev에서 새 staging 생성
+          git checkout -b staging
+
+      # 변경된 앱 탐지 (origin/main 기준)
       - name: Pick affected apps vs origin/main
         id: diff
         shell: bash
@@ -57,27 +65,7 @@ jobs:
           done
           echo "apps=$(echo "$FILTERED" | xargs)" >> "$GITHUB_OUTPUT"
 
-      - name: Delete existing staging branch (remote)
-        if: env.DRY_RUN != 'true'
-        run: |
-          if git ls-remote --exit-code --heads origin staging >/dev/null 2>&1; then
-            echo "Deleting remote branch: staging"
-            git push origin --delete staging || true
-          else
-            echo "Remote branch 'staging' not found. Skip delete."
-          fi
-
-      - name: Delete existing staging branch (remote) (DRY RUN)
-        if: env.DRY_RUN == 'true'
-        run: |
-          echo "DRY RUN: would delete remote branch 'staging' if it existed"
-          git push origin --delete staging --dry-run || true
-
-      - name: Create local staging from dev
-        run: |
-          git branch -D staging 2>/dev/null || true
-          git checkout -b staging dev
-
+      # RC bump & commit & tag
       - name: Compute next RC and bump (affected apps only)
         if: ${{ steps.diff.outputs.apps != '' }}
         id: bump
@@ -125,7 +113,6 @@ jobs:
           done
 
           if [ ${#TAGS[@]} -eq 0 ]; then
-            echo "No package.json changes detected; skipping commit and tags."
             echo "nothing=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -137,24 +124,12 @@ jobs:
 
           echo "nothing=false" >> "$GITHUB_OUTPUT"
 
-      - name: Push staging branch (always)
-        if: env.DRY_RUN != 'true'
+      # staging & tags push
+      - name: Push staging branch
         run: |
           git push -u origin HEAD:staging
 
-      - name: Push staging branch (DRY RUN)
-        if: env.DRY_RUN == 'true'
-        run: |
-          echo "DRY RUN: git push -u origin HEAD:staging"
-          git push -u origin HEAD:staging --dry-run || true
-
-      - name: Push tags (only when bumped)
-        if: env.DRY_RUN != 'true' && steps.bump.outputs.nothing == 'false'
+      - name: Push tags
+        if: steps.bump.outputs.nothing == 'false'
         run: |
           git push origin --tags
-
-      - name: Push tags (DRY RUN)
-        if: env.DRY_RUN == 'true' && steps.bump.outputs.nothing == 'false'
-        run: |
-          echo "DRY RUN: git push origin --tags"
-          git push origin --tags --dry-run || true
