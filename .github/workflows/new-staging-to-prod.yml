@@ -119,24 +119,51 @@ jobs:
           [ -n "$PRETTY" ] || PRETTY="(no app versions found)"
           echo "pretty=$PRETTY" >> "$GITHUB_OUTPUT"
 
-      - name: Debug — list remote RC tags per changed app
+      - name: Delete listed RC tags (one-shot)
         if: steps.prep.outputs.rc_stripped == 'true'
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          git fetch --tags --force --prune origin
-
-          CHANGED_APPS="${{ steps.prep.outputs.changed_apps }}"
-          [ -n "$CHANGED_APPS" ] || exit 0
-
-          for APP in $CHANGED_APPS; do
-            echo "### $APP"
-            git ls-remote --tags origin \
-              "${APP}@*-rc.*" \
-              "${APP}@v*-rc.*" \
-              | awk '{print $2}' \
-              | sed 's@^refs/tags/@@' \
-              || true
+          TAGS=(
+            neubie-go@1.88.0-rc.10
+            neubie-go@1.88.0-rc.11
+            neubie-go@1.88.0-rc.12
+            neubie-go@1.88.0-rc.13
+            neubie-go@1.88.0-rc.14
+            neubie-go@1.88.0-rc.15
+            neubie-go@1.88.0-rc.16
+            neubie-go@1.88.0-rc.18
+            neubie-go@1.88.0-rc.19
+            neubie-go@1.88.0-rc.4
+            neubie-go@1.88.0-rc.5
+            neubie-go@1.88.0-rc.6
+            neubie-go@1.88.0-rc.7
+            neubie-go@1.88.0-rc.9
+            neubie-go@1.89.0-rc.2
+            neubie-go@1.89.3-rc.1
+            neubie-go@2.0.0-rc.1
+            neubie-order@0.0.0-rc.10
+            neubie-order@0.0.0-rc.11
+            neubie-order@0.0.0-rc.12
+            neubie-order@0.0.0-rc.13
+            neubie-order@0.0.0-rc.14
+            neubie-order@0.0.0-rc.15
+            neubie-order@0.0.0-rc.16
+            neubie-order@0.0.0-rc.18
+            neubie-order@0.0.0-rc.19
+            neubie-order@0.0.0-rc.4
+            neubie-order@0.0.0-rc.5
+            neubie-order@0.0.0-rc.6
+            neubie-order@0.0.0-rc.7
+            neubie-order@0.0.0-rc.9
+            neubie-order@0.1.2-rc.1
+          )
+          for T in "${TAGS[@]}"; do
+            # REST API로 삭제; 실패해도 전체는 계속
+            gh api -X DELETE "repos/${REPO}/git/refs/tags/${T}" >/dev/null 2>&1 || true
           done
 
       - name: Open/ensure PR to main
