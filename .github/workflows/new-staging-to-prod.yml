@@ -119,29 +119,24 @@ jobs:
           [ -n "$PRETTY" ] || PRETTY="(no app versions found)"
           echo "pretty=$PRETTY" >> "$GITHUB_OUTPUT"
 
-      - name: Delete RC tags for changed apps (minimal, API-based)
+      - name: Debug — list remote RC tags per changed app
         if: steps.prep.outputs.rc_stripped == 'true'
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           git fetch --tags --force --prune origin
+
           CHANGED_APPS="${{ steps.prep.outputs.changed_apps }}"
           [ -n "$CHANGED_APPS" ] || exit 0
+
           for APP in $CHANGED_APPS; do
-            PKG="apps/$APP/package.json"
-            [ -f "$PKG" ] || continue
-            BASE=$(node -p "try{JSON.parse(require('fs').readFileSync('${PKG}','utf8')).version||''}catch(e){''}")
-            printf "%s" "$BASE" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || continue
-            TAGS=$(git ls-remote --tags origin \
-              "${APP}@${BASE}-rc.*" "${APP}@v${BASE}-rc.*" \
-              | awk '{print $2}' | sed 's@^refs/tags/@@' | xargs)
-            [ -n "${TAGS:-}" ] || continue
-            for T in $TAGS; do
-              gh api -X DELETE "repos/${REPO}/git/refs/tags/${T}" >/dev/null 2>&1 || true
-            done
+            echo "### $APP"
+            git ls-remote --tags origin \
+              "${APP}@*-rc.*" \
+              "${APP}@v*-rc.*" \
+              | awk '{print $2}' \
+              | sed 's@^refs/tags/@@' \
+              || true
           done
 
       - name: Open/ensure PR to main
