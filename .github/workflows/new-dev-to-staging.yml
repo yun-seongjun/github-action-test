@@ -34,7 +34,7 @@ jobs:
   create-staging:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository (dev)
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: dev
@@ -59,7 +59,7 @@ jobs:
           fi
           git checkout -b staging
 
-      - name: Resolve target apps (auto/all/single)
+      - name: Resolve target apps
         id: diff
         shell: bash
         env:
@@ -84,7 +84,7 @@ jobs:
           FILTERED=$(echo "$FILTERED" | xargs || true)
           echo "apps=$FILTERED" >> "$GITHUB_OUTPUT"
 
-      - name: Compute next RC and bump (selected apps only)
+      - name: Compute next RC and bump
         if: ${{ steps.diff.outputs.apps != '' }}
         id: bump
         shell: bash
