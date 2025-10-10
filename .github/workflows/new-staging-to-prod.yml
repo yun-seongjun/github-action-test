@@ -28,7 +28,7 @@ jobs:
         with:
           node-version: 22.17.1
 
-      - name: Prepare head branch (strip RC if needed, with guards)
+      - name: Prepare head branch
         id: prep
         shell: bash
         run: |
@@ -98,7 +98,7 @@ jobs:
           echo "rc_stripped=$CHANGED"  >> "$GITHUB_OUTPUT"
           echo "changed_apps=$(printf '%s\n' "${CHANGED_APPS[@]}" | xargs)" >> "$GITHUB_OUTPUT"
 
-      - name: Build versions line (CHANGED apps only)
+      - name: Build versions line
         id: ver
         shell: bash
         run: |
@@ -119,7 +119,7 @@ jobs:
           [ -n "$PRETTY" ] || PRETTY="(no app versions found)"
           echo "pretty=$PRETTY" >> "$GITHUB_OUTPUT"
 
-      - name: Delete ALL RC tags for changed apps (simple-auto)
+      - name: Delete ALL RC tags for changed apps
         if: steps.prep.outputs.rc_stripped == 'true'
         shell: bash
         env:
@@ -131,14 +131,23 @@ jobs:
           CHANGED_APPS="${{ steps.prep.outputs.changed_apps }}"
           [ -n "$CHANGED_APPS" ] || exit 0
           for APP in $CHANGED_APPS; do
-            TAGS=$(git ls-remote --tags origin \
-              "${APP}@*-rc.*" "${APP}@v*-rc.*" \
-              | awk '{print $2}' | sed 's@^refs/tags/@@' | xargs)
-            [ -n "${TAGS:-}" ] || continue
+            TAGS=$(git ls-remote --tags origin "${APP}@*-rc.*" "${APP}@v*-rc.*" \
+              | awk '{print $2}' | sed 's@^refs/tags/@@')
+            [ -n "$TAGS" ] || continue
+            echo "Found RC tags for $APP:"
+            printf '  %s\n' $TAGS
             for T in $TAGS; do
-              gh api -X DELETE "repos/${REPO}/git/refs/tags/${T}" >/dev/null 2>&1 || \
-              git push origin ":refs/tags/$T" >/dev/null 2>&1 || true
+              ENC=$(printf '%s' "$T" | jq -sRr @uri)  # URL-encode '@', '.'
+              echo "Deleting: $T"
+              gh api -X DELETE "repos/${REPO}/git/refs/tags/${ENC}" || {
+                echo "API delete failed for $T, fallback to git push…"
+                git push origin ":refs/tags/$T"
+              }
             done
+          done
+          echo "Remaining RC tags (should be empty):"
+          for APP in $CHANGED_APPS; do
+            git ls-remote --tags origin "${APP}@*-rc.*" "${APP}@v*-rc.*" | awk '{print $2}' | sed 's@^refs/tags/@@' || true
           done
 
       - name: Open/ensure PR to main
