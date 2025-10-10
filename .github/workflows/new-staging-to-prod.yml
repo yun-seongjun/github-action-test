@@ -143,18 +143,11 @@ jobs:
             [ -f "$PKG" ] || continue
             BASE=$(node -p "try{JSON.parse(require('fs').readFileSync('${PKG}','utf8')).version||''}catch(e){''}")
 
-            # 안정 버전만 처리
             if printf "%s" "$BASE" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-              for PAT in "$APP@${BASE}-rc.*" "$APP@v${BASE}-rc.*"; do
-                MATCHES="$(git tag --list "$PAT" || true)"
-                [ -n "$MATCHES" ] || continue
-
-                # here-string으로 안전하게 라인 단위 처리
-                while IFS= read -r T; do
-                  [ -n "$T" ] || continue
-                  git tag -d "$T" || true
-                  git push origin ":refs/tags/$T" || true
-                done <<< "$MATCHES"
+              for T in $(git tag -l "$APP@${BASE}-rc.*" "$APP@v${BASE}-rc.*"); do
+                [ -n "$T" ] || continue
+                git tag -d "$T" || true
+                git push origin ":refs/tags/$T" || true
               done
             fi
           done
