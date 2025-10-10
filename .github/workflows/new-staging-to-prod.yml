@@ -36,7 +36,6 @@ jobs:
           HEAD_REF="staging"
           CHANGED=false
           CHANGED_APPS=()
-
           echo "::group::Version scan (before)"
           for APP in ${{ env.APPS }}; do
             PKG="apps/$APP/package.json"
@@ -48,26 +47,21 @@ jobs:
             echo "before: $APP -> '$CUR'"
           done
           echo "::endgroup::"
-
           for APP in ${{ env.APPS }}; do
             PKG="apps/$APP/package.json"
             [ -f "$PKG" ] || continue
-
             CUR=$(node -p "try{JSON.parse(require('fs').readFileSync('${PKG}','utf8')).version||''}catch(e){''}")
             BASE=$(printf "%s" "$CUR" | sed -nE 's/^([0-9]+)\.([0-9]+)\.([0-9]+).*/\1.\2.\3/p')
             RC_SUFFIX=$(printf "%s" "$CUR" | sed -nE 's/^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)$/\1/p')
-
             if [ -n "${RC_SUFFIX:-}" ] && [ "${BASE:-}" != "0.0.0" ] && [ -n "${BASE:-}" ]; then
               NEW="$BASE"
             else
               NEW="$CUR"
             fi
-
             if [ "$NEW" = "0.0.0" ] && [ "$CUR" != "0.0.0" ]; then
               echo "WARN: $APP would downgrade '$CUR' -> '$NEW' (blocked)"
               continue
             fi
-
             if [ "$CUR" != "$NEW" ] && [ -n "$NEW" ]; then
               node -e "
                 const fs=require('fs'); const p='${PKG}';
@@ -82,7 +76,6 @@ jobs:
               echo "keep:  $APP $CUR"
             fi
           done
-
           if [ -n "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
             git switch -c release/rc-to-stable || git switch release/rc-to-stable
             git config user.name  "GitHub Actions"
@@ -93,7 +86,6 @@ jobs:
             HEAD_REF="release/rc-to-stable"
             CHANGED=true
           fi
-
           echo "::group::Version scan (after)"
           for APP in ${{ env.APPS }}; do
             PKG="apps/$APP/package.json"
@@ -102,7 +94,6 @@ jobs:
             echo "after:  $APP -> '$NOW'"
           done
           echo "::endgroup::"
-
           echo "head=$HEAD_REF"        >> "$GITHUB_OUTPUT"
           echo "rc_stripped=$CHANGED"  >> "$GITHUB_OUTPUT"
           echo "changed_apps=$(printf '%s\n' "${CHANGED_APPS[@]}" | xargs)" >> "$GITHUB_OUTPUT"
@@ -128,28 +119,29 @@ jobs:
           [ -n "$PRETTY" ] || PRETTY="(no app versions found)"
           echo "pretty=$PRETTY" >> "$GITHUB_OUTPUT"
 
-      - name: Delete RC tags for changed apps
+      - name: Delete RC tags for changed apps (minimal, API-based)
         if: steps.prep.outputs.rc_stripped == 'true'
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           git fetch --tags --force --prune origin
-
           CHANGED_APPS="${{ steps.prep.outputs.changed_apps }}"
           [ -n "$CHANGED_APPS" ] || exit 0
-
           for APP in $CHANGED_APPS; do
             PKG="apps/$APP/package.json"
             [ -f "$PKG" ] || continue
             BASE=$(node -p "try{JSON.parse(require('fs').readFileSync('${PKG}','utf8')).version||''}catch(e){''}")
-
-            if printf "%s" "$BASE" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-              for T in $(git tag -l "$APP@${BASE}-rc.*" "$APP@v${BASE}-rc.*"); do
-                [ -n "$T" ] || continue
-                git tag -d "$T" || true
-                git push origin ":refs/tags/$T" || true
-              done
-            fi
+            printf "%s" "$BASE" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || continue
+            TAGS=$(git ls-remote --tags origin \
+              "${APP}@${BASE}-rc.*" "${APP}@v${BASE}-rc.*" \
+              | awk '{print $2}' | sed 's@^refs/tags/@@' | xargs)
+            [ -n "${TAGS:-}" ] || continue
+            for T in $TAGS; do
+              gh api -X DELETE "repos/${REPO}/git/refs/tags/${T}" >/dev/null 2>&1 || true
+            done
           done
 
       - name: Open/ensure PR to main
@@ -168,7 +160,6 @@ jobs:
             echo "PR already exists for head=$HEAD -> main; skipping create."
             exit 0
           fi
-
           printf -v LINE '🚀 Release: %s' '${{ steps.ver.outputs.pretty }}'
           gh pr create \
             --repo "${{ github.repository }}" \
@@ -193,7 +184,6 @@ jobs:
             echo "PR already exists for head=$HEAD -> dev; skipping create."
             exit 0
           fi
-
           printf -v LINE '🔀 Staging -> Dev: %s' '${{ steps.ver.outputs.pretty }}'
           gh pr create \
             --repo "${{ github.repository }}" \
