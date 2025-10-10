@@ -20,6 +20,7 @@ jobs:
         with:
           ref: staging
           fetch-depth: 0
+          fetch-tags: true
           token: ${{ github.token }}
 
       - name: Setup Node.js (22.17.1)
@@ -130,6 +131,34 @@ jobs:
           done
           [ -n "$PRETTY" ] || PRETTY="(no app versions found)"
           echo "pretty=$PRETTY" >> "$GITHUB_OUTPUT"
+
+      - name: Delete RC tags that match stripped bases
+        if: steps.prep.outputs.rc_stripped == 'true'
+        id: clean_rc_tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags origin
+
+          deleted=()
+
+          for APP in ${{ env.APPS }}; do
+            PKG="apps/$APP/package.json"
+            [ -f "$PKG" ] || continue
+
+            BASE=$(node -p "try{JSON.parse(require('fs').readFileSync('${PKG}','utf8')).version||''}catch(e){''}")
+
+            if printf "%s" "$BASE" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              # 예: neubie-go@0.1.0-rc.1, rc.2 ...
+              for T in $(git tag --list "$APP@${BASE}-rc.*"); do
+                git tag -d "$T" || true
+                git push origin ":refs/tags/$T" || true
+                deleted+=("$T")
+              done
+            fi
+          done
+
+          printf "deleted=%s\n" "${deleted[*]:-}" >> "$GITHUB_OUTPUT"
 
       - name: Open/ensure PR to main
         shell: bash
