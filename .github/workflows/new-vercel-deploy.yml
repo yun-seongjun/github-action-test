@@ -12,16 +12,10 @@ on:
           - NEUBIE_GO
           - NEUBIE_ORDER
           - NEUBIE_ORDER_ADMIN
-      dry-run:
-        description: "Simulate only (no vercel deploy / no QA trigger)"
-        required: false
-        type: boolean
-        default: true
 
 permissions:
   contents: read
 
-# 같은 브랜치/같은 앱에 대한 동시 배포 방지
 concurrency:
   group: deploy-${{ github.ref_name }}-${{ github.event.inputs.app }}
   cancel-in-progress: false
@@ -31,19 +25,10 @@ jobs:
     if: github.ref_name == 'main' || github.ref_name == 'staging'
     runs-on: ubuntu-latest
     env:
-      DRY_RUN: ${{ github.event.inputs.dry-run && 'true' || 'false' }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ github.event.inputs.app == 'NEUBIE_GO' && secrets.VERCEL_PROJECT_ID_GO || github.event.inputs.app == 'NEUBIE_ORDER' && secrets.VERCEL_PROJECT_ID_ORDER || secrets.VERCEL_PROJECT_ID_ORDER_ADMIN }}
 
     steps:
-      - name: DRY RUN notice
-        run: |
-          if [ "${{ env.DRY_RUN }}" = "true" ]; then
-            echo "⚠️ DRY RUN MODE ENABLED: Vercel deploy & QA trigger will be simulated only."
-          else
-            echo "✅ LIVE MODE: This run will deploy to Vercel and trigger QA."
-          fi
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -109,11 +94,9 @@ jobs:
           echo "APP_VERSION=$V" >> $GITHUB_ENV
 
       - name: Install Vercel CLI
-        if: env.DRY_RUN != 'true'
         run: npm i -g --no-fund --no-audit vercel@latest
 
-      - name: Pull Vercel Environment Information (LIVE)
-        if: env.DRY_RUN != 'true'
+      - name: Pull Vercel Environment Information
         working-directory: ${{ steps.map.outputs.dir }}
         run: |
           if [ "${{ github.ref_name }}" = "main" ]; then
@@ -122,18 +105,7 @@ jobs:
             vercel pull --yes --environment=preview --git-branch=staging --token=${{ secrets.VERCEL_TOKEN }}
           fi
 
-      - name: Pull Vercel Environment Information (DRY RUN)
-        if: env.DRY_RUN == 'true'
-        working-directory: ${{ steps.map.outputs.dir }}
-        run: |
-          if [ "${{ github.ref_name }}" = "main" ]; then
-            echo "DRY RUN: vercel pull --yes --environment=production"
-          else
-            echo "DRY RUN: vercel pull --yes --environment=preview --git-branch=staging"
-          fi
-
-      - name: Build Project Artifacts (LIVE)
-        if: env.DRY_RUN != 'true'
+      - name: Build Project Artifacts
         working-directory: ${{ steps.map.outputs.dir }}
         run: |
           if [ "${{ github.ref_name }}" = "main" ]; then
@@ -142,18 +114,7 @@ jobs:
             vercel build
           fi
 
-      - name: Build Project Artifacts (DRY RUN)
-        if: env.DRY_RUN == 'true'
-        working-directory: ${{ steps.map.outputs.dir }}
-        run: |
-          if [ "${{ github.ref_name }}" = "main" ]; then
-            echo "DRY RUN: vercel build --prod"
-          else
-            echo "DRY RUN: vercel build"
-          fi
-
-      - name: Deploy Project Artifacts to Vercel (LIVE)
-        if: env.DRY_RUN != 'true'
+      - name: Deploy Project Artifacts to Vercel
         id: deploy
         working-directory: ${{ steps.map.outputs.dir }}
         shell: bash
@@ -170,21 +131,11 @@ jobs:
             echo "DEPLOY_URL=$URL" >> $GITHUB_ENV
           fi
 
-      - name: Deploy Project Artifacts to Vercel (DRY RUN)
-        if: env.DRY_RUN == 'true'
-        working-directory: ${{ steps.map.outputs.dir }}
-        run: |
-          if [ "${{ github.ref_name }}" = "main" ]; then
-            echo "DRY RUN: vercel deploy --prebuilt --prod"
-          else
-            echo "DRY RUN: vercel deploy --prebuilt"
-          fi
-
       - name: Extract short SHA
         run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
 
-      - name: Slack Notification (LIVE)
-        if: always() && github.event.inputs.dry-run != true
+      - name: Slack Notification
+        if: always()
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
@@ -199,30 +150,10 @@ jobs:
               ]
             }
 
-      - name: Slack Notification (DRY RUN)
-        if: always() && github.event.inputs.dry-run == true
-        run: |
-          echo "⚠️ DRY RUN: Slack message would be sent with following payload:"
-          cat <<'EOF'
-          {
-            "blocks": [
-              { "type": "section", "text": { "type": "mrkdwn", "text": "*🚀 프론트엔드 배포 완료 알림*" } },
-              { "type": "section", "text": { "type": "mrkdwn",
-                "text": "앱: *${{ env.APP_NAME }}*\n브랜치: *${{ github.ref_name }}*\n버전: *${{ env.APP_VERSION }}*(${{ env.SHORT_SHA }})\n배포 결과: *${{ job.status == 'success' && '성공' || '실패' }}*"
-                } }
-            ]
-          }
-          EOF
-
-      - name: Trigger QA Test Workflow (LIVE)
-        if: success() && github.ref_name == 'staging' && env.DRY_RUN != 'true'
+      - name: Trigger QA Test Workflow
+        if: success() && github.ref_name == 'staging'
         uses: ./.github/actions/trigger-qa-test
         with:
           jenkins_url: ${{ secrets.JENKINS_URL }}
           jenkins_user: ${{ secrets.JENKINS_USER }}
           jenkins_token: ${{ secrets.JENKINS_TOKEN }}
-
-      - name: Trigger QA Test Workflow (DRY RUN)
-        if: success() && github.ref_name == 'staging' && env.DRY_RUN == 'true'
-        run: |
-          echo "⚠️ DRY RUN: would trigger QA workflow via Jenkins"
