@@ -56,11 +56,8 @@ jobs:
           # 로컬 staging 브랜치를 origin/dev 기준으로 강제로 맞추기
           git checkout -B staging origin/dev
 
-          # 원격에 staging 브랜치가 있으면 삭제 (기존 동작 유지)
-          if git ls-remote --exit-code --heads origin staging >/dev/null 2>&1; then
-          git push origin :staging
-          fi
-
+          # 원격 staging 브랜치 삭제 (없으면 에러 무시)
+          git push origin :staging 2>/dev/null || true
       - name: Resolve target apps
         id: diff
         shell: bash
