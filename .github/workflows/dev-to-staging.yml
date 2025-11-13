@@ -53,8 +53,13 @@ jobs:
           # origin/dev 최신 가져오기
           git fetch origin dev --tags
 
-          # origin/dev 기준으로 로컬 staging 브랜치를 강제로 생성/리셋
+          # 로컬 staging 브랜치를 origin/dev 기준으로 강제로 맞추기
           git checkout -B staging origin/dev
+
+          # 원격에 staging 브랜치가 있으면 삭제 (기존 동작 유지)
+          if git ls-remote --exit-code --heads origin staging >/dev/null 2>&1; then
+          git push origin :staging
+          fi
 
       - name: Resolve target apps
         id: diff
