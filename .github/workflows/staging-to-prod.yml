@@ -1,4 +1,4 @@
-name: Staging -> Main, Dev --new
+name: Staging -> Main, Dev
 
 on:
   workflow_dispatch: {}
@@ -34,8 +34,12 @@ jobs:
         run: |
           set -euo pipefail
           HEAD_REF="staging"
-          CHANGED=false
-          CHANGED_APPS=()
+
+          get_version() {
+            local pkg="$1"
+            node -p "try{JSON.parse(require('fs').readFileSync('${pkg}','utf8')).version||''}catch(e){''}"
+          }
+
           echo "::group::Version scan (before)"
           for APP in ${{ env.APPS }}; do
             PKG="apps/$APP/package.json"
@@ -43,40 +47,37 @@ jobs:
               echo "skip: $PKG not found" >&2
               continue
             fi
-            CUR=$(node -p "try{JSON.parse(require('fs').readFileSync('${PKG}','utf8')).version||''}catch(e){''}")
-            echo "before: $APP -> '$CUR'"
+            CURRENT=$(get_version "$PKG")
+            echo "before: $APP -> '$CURRENT'"
           done
           echo "::endgroup::"
+
+          # package.json 에서 실제로 -rc.N 제거
           for APP in ${{ env.APPS }}; do
             PKG="apps/$APP/package.json"
             [ -f "$PKG" ] || continue
-            CUR=$(node -p "try{JSON.parse(require('fs').readFileSync('${PKG}','utf8')).version||''}catch(e){''}")
-            BASE=$(printf "%s" "$CUR" | sed -nE 's/^([0-9]+)\.([0-9]+)\.([0-9]+).*/\1.\2.\3/p')
-            RC_SUFFIX=$(printf "%s" "$CUR" | sed -nE 's/^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)$/\1/p')
-            if [ -n "${RC_SUFFIX:-}" ] && [ "${BASE:-}" != "0.0.0" ] && [ -n "${BASE:-}" ]; then
-              NEW="$BASE"
-            else
-              NEW="$CUR"
-            fi
-            if [ "$NEW" = "0.0.0" ] && [ "$CUR" != "0.0.0" ]; then
-              echo "WARN: $APP would downgrade '$CUR' -> '$NEW' (blocked)"
-              continue
-            fi
-            if [ "$CUR" != "$NEW" ] && [ -n "$NEW" ]; then
+
+            CURRENT=$(get_version "$PKG")
+            [ -n "$CURRENT" ] || continue
+
+            # x.y.z-rc.n 형태만 매치해서 x.y.z 로 변환
+            BASE=$(printf '%s' "$CURRENT" | sed -nE 's/^([0-9]+)\.([0-9]+)\.([0-9]+)-rc\.[0-9]+$/\1.\2.\3/p')
+
+            if [ -n "$BASE" ]; then
               node -e "
                 const fs=require('fs'); const p='${PKG}';
                 const pkg=JSON.parse(fs.readFileSync(p,'utf8'));
-                pkg.version='${NEW}';
+                pkg.version='${BASE}';
                 fs.writeFileSync(p, JSON.stringify(pkg, null, 2)+'\n');
               "
-              echo "write: $APP $CUR -> $NEW"
-              CHANGED=true
-              CHANGED_APPS+=("$APP")
+              echo "write: $APP $CURRENT -> $BASE"
             else
-              echo "keep:  $APP $CUR"
+              echo "keep:  $APP $CURRENT"
             fi
           done
-          if [ -n "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
+
+          # 변경이 실제로 존재하면 release/rc-to-stable 브랜치 생성/업데이트
+          if [ -n \"$(git status --porcelain apps/*/package.json 2>/dev/null)\" ]; then
             git switch -c release/rc-to-stable || git switch release/rc-to-stable
             git config user.name  "GitHub Actions"
             git config user.email "github-actions@github.com"
@@ -84,19 +85,18 @@ jobs:
             git commit -m "release: RC to stable"
             git push --force-with-lease origin HEAD:release/rc-to-stable
             HEAD_REF="release/rc-to-stable"
-            CHANGED=true
           fi
+
           echo "::group::Version scan (after)"
           for APP in ${{ env.APPS }}; do
             PKG="apps/$APP/package.json"
             [ -f "$PKG" ] || continue
-            NOW=$(node -p "try{JSON.parse(require('fs').readFileSync('${PKG}','utf8')).version||''}catch(e){''}")
+            NOW=$(get_version "$PKG")
             echo "after:  $APP -> '$NOW'"
           done
           echo "::endgroup::"
-          echo "head=$HEAD_REF"        >> "$GITHUB_OUTPUT"
-          echo "rc_stripped=$CHANGED"  >> "$GITHUB_OUTPUT"
-          echo "changed_apps=$(printf '%s\n' "${CHANGED_APPS[@]}" | xargs)" >> "$GITHUB_OUTPUT"
+
+          echo "head=$HEAD_REF" >> "$GITHUB_OUTPUT"
 
       - name: Build versions line
         id: ver
