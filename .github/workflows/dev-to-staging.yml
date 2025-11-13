@@ -3,8 +3,8 @@ name: Dev -> Staging
 on:
   workflow_dispatch:
     inputs:
-      bump_level:
-        description: "Version bump"
+      new_level:
+        description: "New version"
         type: choice
         required: true
         default: patch
@@ -92,12 +92,11 @@ jobs:
           echo "apps=$TARGETS"
           echo "apps=$TARGETS" >> "$GITHUB_OUTPUT"
 
-      - name: Compute next RC and bump
+      - name: Compute next RC and new version
         if: ${{ steps.diff.outputs.apps != '' }}
-        id: bump
         shell: bash
         env:
-          BUMP_LEVEL: ${{ inputs.bump_level }}
+          NEW_LEVEL: ${{ inputs.new_level }}
         run: |
           set -euo pipefail
 
@@ -110,7 +109,7 @@ jobs:
           fi
 
           # 버전 변경 함수 (하단 반복문에서 사용)
-          bump_version () {
+          new_version () {
             local VERSION="$1" LEVEL="$2" MAJOR MINOR PATCH
             # "."으로 버전 분리
             IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
@@ -130,7 +129,7 @@ jobs:
 
             # 현재 버전 base version 가져오기
             BASE=$(node -p "require('./$PKG').version")
-            NEWBASE=$(bump_version "$BASE" "$BUMP_LEVEL")
+            NEWBASE=$(new_version "$BASE" "$NEW_LEVEL")
 
             # dev to staging은 버전당 한 번만이라고 가정 → 항상 rc.1
             NEW="${NEWBASE}-rc.1"
