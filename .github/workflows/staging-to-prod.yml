@@ -96,6 +96,7 @@ jobs:
           done
           echo "::endgroup::"
 
+          echo "head=$HEAD_REF"
           echo "head=$HEAD_REF" >> "$GITHUB_OUTPUT"
 
       - name: Build versions line
@@ -103,19 +104,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APPS_TO_LIST="${{ steps.prep.outputs.changed_apps }}"
+
           PRETTY=""
           SEP=""
-          if [ -n "$APPS_TO_LIST" ]; then
-            for APP in $APPS_TO_LIST; do
-              PKG="apps/$APP/package.json"
-              [ -f "$PKG" ] || continue
-              V=$(node -p "try{JSON.parse(require('fs').readFileSync('${PKG}','utf8')).version||''}catch(e){''}")
-              [ -n "$V" ] || continue
-              PRETTY="${PRETTY}${SEP}\`${APP}@${V}\`"
-              SEP=", "
-            done
-          fi
+
+          for APP in ${{ env.APPS }}; do
+            PKG="apps/$APP/package.json"
+            [ -f "$PKG" ] || continue
+            V=$(node -p "JSON.parse(require('fs').readFileSync('${PKG}','utf8')).version || ''")
+            [ -n "$V" ] || continue
+            PRETTY="${PRETTY}${SEP}\`${APP}@${V}\`"
+            SEP=", "
+          done
+
           [ -n "$PRETTY" ] || PRETTY="(no app versions found)"
           echo "pretty=$PRETTY" >> "$GITHUB_OUTPUT"
 
