@@ -62,7 +62,7 @@ jobs:
 
             # x.y.z-rc.n 형태만 매치해서 x.y.z 로 변환
             BASE=$(printf '%s' "$CURRENT" | sed -nE 's/^([0-9]+)\.([0-9]+)\.([0-9]+)-rc\.[0-9]+$/\1.\2.\3/p')
-            echo $BASE
+
             if [ -n "$BASE" ]; then
               node -e "
                 const fs=require('fs'); const p='${PKG}';
@@ -77,7 +77,7 @@ jobs:
           done
 
           # 변경이 실제로 존재하면 release/rc-to-stable 브랜치 생성/업데이트
-          if [ -n \"$(git status --porcelain apps/*/package.json 2>/dev/null)\" ]; then
+          if [ -n "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
             git switch -c release/rc-to-stable || git switch release/rc-to-stable
             git config user.name  "GitHub Actions"
             git config user.email "github-actions@github.com"
