@@ -38,7 +38,6 @@ jobs:
         with:
           ref: dev
           fetch-depth: 0
-          fetch-tags: true
 
       - name: Configure Git
         run: |
@@ -51,7 +50,7 @@ jobs:
           set -euo pipefail
 
           # origin/dev 최신 가져오기
-          git fetch origin dev --tags
+          git fetch origin dev
 
           # 로컬 staging 브랜치를 origin/dev 기준으로 강제로 맞추기
           git checkout -B staging origin/dev
@@ -70,7 +69,7 @@ jobs:
           CATALOG="${{ env.APPS }}"
 
           # main 최신 가져오기 (dev와 변경점 체크위해)
-          git fetch origin main --tags >/dev/null 2>&1 || true
+          git fetch origin main >/dev/null 2>&1 || true
 
           TARGETAPPS="$INPUT_APPS"
 
@@ -123,8 +122,6 @@ jobs:
             echo "${MAJOR}.${MINOR}.${PATCH}"
           }
 
-          TAGS=()
-
           for APP in $APPS; do
             # 버전 갱신을 위한 package.json
             PKG="apps/$APP/package.json"
@@ -148,24 +145,8 @@ jobs:
 
             git add "$PKG"
             git commit -m "🚀 [$APP] ${BASE} → ${NEW}"
-
-            TAGS+=("$APP@$NEW")
           done
-
-          # 바꿀게 없어서 종료
-          if [ ${#TAGS[@]} -eq 0 ]; then
-            echo "nothing change" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # 태그생성
-          git tag "${TAGS[@]}"
 
       - name: Push staging branch
         run: |
           git push -u origin HEAD:staging
-
-      - name: Push tags
-        if: steps.bump.outputs.nothing == 'false'
-        run: |
-          git push origin --tags
