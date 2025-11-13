@@ -106,12 +106,12 @@ jobs:
 
           # 비어 있으면 종료
           if [ -z "$APPS" ]; then
-            echo "nothing=true" >> "$GITHUB_OUTPUT"
+            echo "empty apps" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # 세미버 버전 올리는 간단 함수
-          bump_semi_version () {
+          # 버전 변경 함수 (하단 반복문에서 사용)
+          bump_version () {
             local VER="$1" LVL="$2" MAJOR MINOR PATCH
             IFS='.' read -r MAJOR MINOR PATCH <<< "$VER"
             MAJOR=${MAJOR:-0}; MINOR=${MINOR:-0}; PATCH=${PATCH:-0}
@@ -126,17 +126,12 @@ jobs:
           TAGS=()
 
           for APP in $APPS; do
+            # 버전 갱신을 위한 package.json
             PKG="apps/$APP/package.json"
             [ -f "$PKG" ] || continue
 
-            # 현재 버전에서 "-rc.N" 떼고 base만 가져오기
-            BASE=$(node -p "require('./$PKG').version.split('-rc.')[0]")
-            NEWBASE=$(bump_semi_version "$BASE" "$BUMP_LEVEL")
-
-            # 기존 rc 태그 개수 + 1 로 다음 rc 번호 계산 (sort/sed 없이)
-            COUNT=$(git tag --list "$APP@${NEWBASE}-rc.*" | wc -l)
-            NEXT=$((COUNT + 1))
-            NEW="${NEWBASE}-rc.${NEXT}"
+            # dev→staging은 버전당 한번이기 때문에 → 항상 rc.1
+            NEW="$(bump_version "$BASE" "$BUMP_LEVEL")-rc.1"
 
             # package.json version 갱신
             node -e "
@@ -153,16 +148,14 @@ jobs:
             TAGS+=("$APP@$NEW")
           done
 
-          # 바꿀 게 없었으면 nothing=true
+          # 바꿀게 없어서 종료
           if [ ${#TAGS[@]} -eq 0 ]; then
-            echo "nothing=true" >> "$GITHUB_OUTPUT"
+            echo "nothing change" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # 태그 한 번에 생성
+          # 태그생성
           git tag "${TAGS[@]}"
-
-          echo "nothing=false" >> "$GITHUB_OUTPUT"
 
       - name: Push staging branch
         run: |
