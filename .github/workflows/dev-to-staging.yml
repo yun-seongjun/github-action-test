@@ -112,7 +112,9 @@ jobs:
           # 버전 변경 함수 (하단 반복문에서 사용)
           bump_version () {
             local VER="$1" LVL="$2" MAJOR MINOR PATCH
+            # "."으로 버전 분리
             IFS='.' read -r MAJOR MINOR PATCH <<< "$VER"
+            # default 설정
             MAJOR=${MAJOR:-0}; MINOR=${MINOR:-0}; PATCH=${PATCH:-0}
             case "$LVL" in
               major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
@@ -131,7 +133,7 @@ jobs:
             BASE=$(node -p "require('./$PKG').version")
             NEWBASE=$(bump_version "$BASE" "$BUMP_LEVEL")
 
-            # dev→staging은 버전당 한 번만이라고 가정 → 항상 rc.1
+            # dev to staging은 버전당 한 번만이라고 가정 → 항상 rc.1
             NEW="${NEWBASE}-rc.1"
 
             # package.json version 갱신
