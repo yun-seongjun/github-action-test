@@ -23,9 +23,6 @@ on:
           - neubie-order
           - neubie-order-admin
 
-permissions:
-  contents: write
-
 env:
   APPS: "neubie-go neubie-order neubie-order-admin"
 
@@ -39,6 +36,7 @@ jobs:
           ref: dev
           fetch-depth: 0
           fetch-tags: true
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure Git
         run: |
@@ -56,8 +54,9 @@ jobs:
           # 로컬 staging 브랜치를 origin/dev 기준으로 강제로 맞추기
           git checkout -B staging origin/dev
 
-          # 원격 staging 브랜치 삭제 (없으면 에러 무시)
+          # 원격 staging 브랜치 삭제
           git push origin :staging 2>/dev/null || true
+
       - name: Resolve target apps
         id: diff
         shell: bash
