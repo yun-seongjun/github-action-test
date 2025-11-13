@@ -90,6 +90,7 @@ jobs:
           fi
           done
 
+          echo "apps=$TARGETS"
           echo "apps=$TARGETS" >> "$GITHUB_OUTPUT"
 
       - name: Compute next RC and bump
