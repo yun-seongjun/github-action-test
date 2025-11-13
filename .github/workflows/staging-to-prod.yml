@@ -34,6 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           HEAD_REF="staging"
+          CHANGED_APPS=""
 
           get_version() {
             local pkg="$1"
@@ -60,7 +61,6 @@ jobs:
             CURRENT=$(get_version "$PKG")
             [ -n "$CURRENT" ] || continue
 
-            # x.y.z-rc.n 형태만 매치해서 x.y.z 로 변환
             BASE=$(printf '%s' "$CURRENT" | sed -nE 's/^([0-9]+)\.([0-9]+)\.([0-9]+)-rc\.[0-9]+$/\1.\2.\3/p')
 
             if [ -n "$BASE" ]; then
@@ -68,16 +68,20 @@ jobs:
                 const fs=require('fs'); const p='${PKG}';
                 const pkg=JSON.parse(fs.readFileSync(p,'utf8'));
                 pkg.version='${BASE}';
-                fs.writeFileSync(p, JSON.stringify(pkg, null, 2)+'\n');
+                fs.writeFileSync(p, JSON.stringify(pkg,null,2)+'\n');
               "
               echo "write: $APP $CURRENT -> $BASE"
+
+              # 🔥 변경된 앱 기록(핵심)
+              CHANGED_APPS="$CHANGED_APPS $APP"
+
             else
               echo "keep:  $APP $CURRENT"
             fi
           done
 
-          # 변경이 실제로 존재하면 release/rc-to-stable 브랜치 생성/업데이트
-          if [ -n \"$(git status --porcelain apps/*/package.json 2>/dev/null)\" ]; then
+          # 브랜치 생성
+          if [ -n "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
             git switch -c release/rc-to-stable || git switch release/rc-to-stable
             git config user.name  "GitHub Actions"
             git config user.email "github-actions@github.com"
@@ -86,6 +90,9 @@ jobs:
             git push --force-with-lease origin HEAD:release/rc-to-stable
             HEAD_REF="release/rc-to-stable"
           fi
+
+          # Trim spaces
+          CHANGED_APPS="$(echo "$CHANGED_APPS" | xargs)"
 
           echo "::group::Version scan (after)"
           for APP in ${{ env.APPS }}; do
@@ -97,26 +104,32 @@ jobs:
           echo "::endgroup::"
 
           echo "head=$HEAD_REF" >> "$GITHUB_OUTPUT"
+          echo "changed_apps=$CHANGED_APPS" >> "$GITHUB_OUTPUT"
 
       - name: Build versions line
         id: ver
         shell: bash
         run: |
           set -euo pipefail
-          APPS_TO_LIST="${{ steps.prep.outputs.changed_apps }}"
+
+          CHANGED_APPS="${{ steps.prep.outputs.changed_apps }}"
+
+          if [ -z "$CHANGED_APPS" ]; then
+            echo "pretty=(no app versions found)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           PRETTY=""
           SEP=""
-          if [ -n "$APPS_TO_LIST" ]; then
-            for APP in $APPS_TO_LIST; do
-              PKG="apps/$APP/package.json"
-              [ -f "$PKG" ] || continue
-              V=$(node -p "try{JSON.parse(require('fs').readFileSync('${PKG}','utf8')).version||''}catch(e){''}")
-              [ -n "$V" ] || continue
-              PRETTY="${PRETTY}${SEP}\`${APP}@${V}\`"
-              SEP=", "
-            done
-          fi
-          [ -n "$PRETTY" ] || PRETTY="(no app versions found)"
+
+          for APP in $CHANGED_APPS; do
+            PKG="apps/$APP/package.json"
+            [ -f "$PKG" ] || continue
+            V=$(node -p "JSON.parse(require('fs').readFileSync('${PKG}','utf8')).version||''")
+            PRETTY="${PRETTY}${SEP}\`${APP}@${V}\`"
+            SEP=", "
+          done
+
           echo "pretty=$PRETTY" >> "$GITHUB_OUTPUT"
 
       - name: Delete ALL RC tags for changed apps
