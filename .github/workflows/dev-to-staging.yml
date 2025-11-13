@@ -23,6 +23,9 @@ on:
           - neubie-order
           - neubie-order-admin
 
+permissions:
+  contents: write
+
 env:
   APPS: "neubie-go neubie-order neubie-order-admin"
 
@@ -36,7 +39,6 @@ jobs:
           ref: dev
           fetch-depth: 0
           fetch-tags: true
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure Git
         run: |
@@ -64,21 +66,31 @@ jobs:
           INPUT_APPS: ${{ inputs.apps }}
         run: |
           set -euo pipefail
-          git fetch origin main --tags || true
+
           CATALOG="${{ env.APPS }}"
-          normalize_list () { tr ',\n' '  ' | xargs -n1 | sort -u | xargs; }
+
+          # main 최신 가져오기 (없어도 워크플로 깨지지 않게)
+          git fetch origin main --tags >/dev/null 2>&1 || true
+
           if [ "$INPUT_APPS" = "auto" ]; then
-            CHANGED=$(git diff --name-only origin/main..HEAD || true)
-            WANT=$(echo "$CHANGED" | awk -F/ '/^apps\//{print $2}' | normalize_list || true)
+          CANDIDATES=$(git diff --name-only origin/main..HEAD 2>/dev/null \
+          | awk -F/ '/^apps\//{print $2}' \
+          | sort -u || true)
           else
-            WANT="$INPUT_APPS"
+          CANDIDATES="$INPUT_APPS"
           fi
-          FILTERED=""
-          for a in $CATALOG; do
-            if echo " $WANT " | grep -q " $a "; then FILTERED="$FILTERED $a"; fi
+
+          TARGETS=""
+          for app in $CATALOG; do
+          # CANDIDATES 중에서 카탈로그에 있는 앱만 픽
+          if echo "$CANDIDATES" | grep -qx "$app"; then
+          TARGETS="$TARGETS $app"
+          fi
           done
-          FILTERED=$(echo "$FILTERED" | xargs || true)
-          echo "apps=$FILTERED" >> "$GITHUB_OUTPUT"
+
+          TARGETS=$(echo "$TARGETS" | xargs || true)
+
+          echo "apps=$TARGETS" >> "$GITHUB_OUTPUT"
 
       - name: Compute next RC and bump
         if: ${{ steps.diff.outputs.apps != '' }}
