@@ -84,7 +84,7 @@ jobs:
 
           for app in $CATALOG; do
           # TARGETAPPS에 app 포함여부 확인
-          if printf '%s\n' TARGETAPPS | grep -qx -- "$app"; then
+          if printf '%s\n' $TARGETAPPS | grep -qx -- "$app"; then
           # TARGETS가 빈값이면 "app", 비어있지 않으면 "기존값 + 공백 + app"
           TARGETS="${TARGETS:+$TARGETS }$app"
           fi
