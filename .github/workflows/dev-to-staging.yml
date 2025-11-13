@@ -69,26 +69,26 @@ jobs:
 
           CATALOG="${{ env.APPS }}"
 
-          # main 최신 가져오기 (없어도 워크플로 깨지지 않게)
+          # main 최신 가져오기 (dev와 변경점 체크위해)
           git fetch origin main --tags >/dev/null 2>&1 || true
 
+          TARGETAPPS="$INPUT_APPS"
+
           if [ "$INPUT_APPS" = "auto" ]; then
-          CANDIDATES=$(git diff --name-only origin/main..HEAD 2>/dev/null \
-          | awk -F/ '/^apps\//{print $2}' \
-          | sort -u || true)
-          else
-          CANDIDATES="$INPUT_APPS"
+          # 경로가 "apps/" 로 시작하면서 "/" 기준 2번째 가져오기
+          TARGETAPPS=$(git diff --name-only origin/main..HEAD 2>/dev/null \
+          | awk -F/ '/^apps\//{print $2}' || true)
           fi
 
           TARGETS=""
+
           for app in $CATALOG; do
-          # CANDIDATES 중에서 카탈로그에 있는 앱만 픽
-          if echo "$CANDIDATES" | grep -qx "$app"; then
-          TARGETS="$TARGETS $app"
+          # TARGETAPPS에 app 포함여부 확인
+          if printf '%s\n' TARGETAPPS | grep -qx -- "$app"; then
+          # TARGETS가 빈값이면 "app", 비어있지 않으면 "기존값 + 공백 + app"
+          TARGETS="${TARGETS:+$TARGETS }$app"
           fi
           done
-
-          TARGETS=$(echo "$TARGETS" | xargs || true)
 
           echo "apps=$TARGETS" >> "$GITHUB_OUTPUT"
 
