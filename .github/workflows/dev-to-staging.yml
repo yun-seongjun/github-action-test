@@ -101,36 +101,44 @@ jobs:
           BUMP_LEVEL: ${{ inputs.bump_level }}
         run: |
           set -euo pipefail
-          if ! command -v node >/dev/null 2>&1; then
-            echo "Node.js not found on runner"; exit 1
+
+          APPS="${{ steps.diff.outputs.apps }}"
+
+          # 비어 있으면 종료
+          if [ -z "$APPS" ]; then
+            echo "nothing=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          bump_semver () {
-            local VER="$1"; local LVL="$2"; local MAJ MIN PAT
-            IFS='.' read -r MAJ MIN PAT <<< "$VER"
-            MAJ=${MAJ:-0}; MIN=${MIN:-0}; PAT=${PAT:-0}
+
+          # 세미버 버전 올리는 간단 함수
+          bump_semi_version () {
+            local VER="$1" LVL="$2" MAJOR MINOR PATCH
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VER"
+            MAJOR=${MAJOR:-0}; MINOR=${MINOR:-0}; PATCH=${PATCH:-0}
             case "$LVL" in
-              major) MAJ=$((MAJ+1)); MIN=0; PAT=0 ;;
-              minor) MIN=$((MIN+1)); PAT=0 ;;
-              patch|*) PAT=$((PAT+1)) ;;
+              major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+              minor) MINOR=$((MINOR+1)); PATCH=0 ;;
+              patch|*) PATCH=$((PATCH+1)) ;;
             esac
-            echo "${MAJ}.${MIN}.${PAT}"
+            echo "${MAJOR}.${MINOR}.${PATCH}"
           }
+
           TAGS=()
-          for APP in ${{ steps.diff.outputs.apps }}; do
+
+          for APP in $APPS; do
             PKG="apps/$APP/package.json"
-            if [ ! -f "$PKG" ]; then
-              continue
-            fi
-            CUR=$(node -p "require('./$PKG').version" | sed 's/-rc\.[0-9]\+$//')
-            BASE="$CUR"
-            NEWBASE=$(bump_semver "$BASE" "$BUMP_LEVEL")
-            LAST=$(git tag --list "$APP@${NEWBASE}-rc.*" | sort -V | tail -n1)
-            if [ -z "$LAST" ]; then
-              NEXT=1
-            else
-              NEXT=$(( $(echo "$LAST" | sed -E 's/.*-rc\.([0-9]+)/\1/') + 1 ))
-            fi
+            [ -f "$PKG" ] || continue
+
+            # 현재 버전에서 "-rc.N" 떼고 base만 가져오기
+            BASE=$(node -p "require('./$PKG').version.split('-rc.')[0]")
+            NEWBASE=$(bump_semi_version "$BASE" "$BUMP_LEVEL")
+
+            # 기존 rc 태그 개수 + 1 로 다음 rc 번호 계산 (sort/sed 없이)
+            COUNT=$(git tag --list "$APP@${NEWBASE}-rc.*" | wc -l)
+            NEXT=$((COUNT + 1))
             NEW="${NEWBASE}-rc.${NEXT}"
+
+            # package.json version 갱신
             node -e "
               const fs = require('fs');
               const p = '$PKG';
@@ -138,17 +146,22 @@ jobs:
               pkg.version = '$NEW';
               fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
             "
+
             git add "$PKG"
             git commit -m "🚀 [$APP] ${BASE} → ${NEW}"
+
             TAGS+=("$APP@$NEW")
           done
+
+          # 바꿀 게 없었으면 nothing=true
           if [ ${#TAGS[@]} -eq 0 ]; then
             echo "nothing=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          for T in "${TAGS[@]}"; do
-            git tag "$T" || true
-          done
+
+          # 태그 한 번에 생성
+          git tag "${TAGS[@]}"
+
           echo "nothing=false" >> "$GITHUB_OUTPUT"
 
       - name: Push staging branch
