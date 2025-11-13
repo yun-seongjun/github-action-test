@@ -130,8 +130,12 @@ jobs:
             PKG="apps/$APP/package.json"
             [ -f "$PKG" ] || continue
 
-            # dev→staging은 버전당 한번이기 때문에 → 항상 rc.1
-            NEW="$(bump_version "$BASE" "$BUMP_LEVEL")-rc.1"
+            # 현재 버전 base version 가져오기
+            BASE=$(node -p "require('./$PKG').version")
+            NEWBASE=$(bump_version "$BASE" "$BUMP_LEVEL")
+
+            # dev→staging은 버전당 한 번만이라고 가정 → 항상 rc.1
+            NEW="${NEWBASE}-rc.1"
 
             # package.json version 갱신
             node -e "
