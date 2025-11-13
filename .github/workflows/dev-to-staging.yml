@@ -1,4 +1,4 @@
-name: Dev -> Staging --new
+name: Dev -> Staging
 
 on:
   workflow_dispatch:
@@ -19,7 +19,6 @@ on:
         default: auto
         options:
           - auto
-          - all
           - neubie-go
           - neubie-order
           - neubie-order-admin
@@ -50,14 +49,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          # origin/dev 최신 가져오기
           git fetch origin dev --tags
-          git checkout dev
-          git reset --hard origin/dev
-          git branch -D staging 2>/dev/null || true
-          if git ls-remote --exit-code --heads origin staging >/dev/null 2>&1; then
-            git push origin :staging
-          fi
-          git checkout -b staging
+
+          # origin/dev 기준으로 로컬 staging 브랜치를 강제로 생성/리셋
+          git checkout -B staging origin/dev
 
       - name: Resolve target apps
         id: diff
@@ -72,8 +69,6 @@ jobs:
           if [ "$INPUT_APPS" = "auto" ]; then
             CHANGED=$(git diff --name-only origin/main..HEAD || true)
             WANT=$(echo "$CHANGED" | awk -F/ '/^apps\//{print $2}' | normalize_list || true)
-          elif [ "$INPUT_APPS" = "all" ]; then
-            WANT="$CATALOG"
           else
             WANT="$INPUT_APPS"
           fi
