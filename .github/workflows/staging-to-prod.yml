@@ -41,44 +41,77 @@ jobs:
             node -p "try{JSON.parse(require('fs').readFileSync('${pkg}','utf8')).version||''}catch(e){''}"
           }
 
-          # -RC strip
+          echo "::group::Version scan (before)"
+          for APP in ${{ env.APPS }}; do
+            PKG="apps/$APP/package.json"
+            if [ ! -f "$PKG" ]; then
+              echo "skip: $PKG not found" >&2
+              continue
+            fi
+            CURRENT=$(get_version "$PKG")
+            echo "before: $APP -> '$CURRENT'"
+          done
+          echo "::endgroup::"
+
+          # package.json 에서 실제로 -rc.N 제거
           for APP in ${{ env.APPS }}; do
             PKG="apps/$APP/package.json"
             [ -f "$PKG" ] || continue
 
-            CUR=$(get_version "$PKG")
-            BASE=$(printf '%s' "$CUR" | sed -nE 's/^([0-9]+\.[0-9]+\.[0-9]+)-rc\.[0-9]+$/\1/p')
+            CURRENT=$(get_version "$PKG")
+            [ -n "$CURRENT" ] || continue
 
-            if [ -n "$BASE" ] && [ "$BASE" != "$CUR" ]; then
+            BASE=$(printf '%s' "$CURRENT" | sed -nE 's/^([0-9]+)\.([0-9]+)\.([0-9]+)-rc\.[0-9]+$/\1.\2.\3/p')
+
+            if [ -n "$BASE" ]; then
               node -e "
                 const fs=require('fs'); const p='${PKG}';
                 const pkg=JSON.parse(fs.readFileSync(p,'utf8'));
                 pkg.version='${BASE}';
                 fs.writeFileSync(p, JSON.stringify(pkg,null,2)+'\n');
               "
-              echo "write: $APP $CUR -> $BASE"
+              echo "write: $APP $CURRENT -> $BASE"
+
+              # 🔥 변경된 앱 기록(핵심)
               CHANGED_APPS="$CHANGED_APPS $APP"
+
+            else
+              echo "keep:  $APP $CURRENT"
             fi
           done
 
-          # 변경이 있으면 staging에 바로 커밋
-          if [ -n "$(git status --porcelain apps/*/package.json)" ]; then
-            git config user.name "GitHub Actions"
+          # 브랜치 생성
+          if [ -n "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
+            git switch -c release/rc-to-stable || git switch release/rc-to-stable
+            git config user.name  "GitHub Actions"
             git config user.email "github-actions@github.com"
             git add apps/*/package.json
-            git commit -m "release: strip RC versions"
-            git push origin staging
+            git commit -m "release: RC to stable"
+            git push --force-with-lease origin HEAD:release/rc-to-stable
+            HEAD_REF="release/rc-to-stable"
           fi
 
+          # Trim spaces
           CHANGED_APPS="$(echo "$CHANGED_APPS" | xargs)"
-          echo "changed_apps=$CHANGED_APPS" >> "$GITHUB_OUTPUT"
+
+          echo "::group::Version scan (after)"
+          for APP in ${{ env.APPS }}; do
+            PKG="apps/$APP/package.json"
+            [ -f "$PKG" ] || continue
+            NOW=$(get_version "$PKG")
+            echo "after:  $APP -> '$NOW'"
+          done
+          echo "::endgroup::"
+
           echo "head=$HEAD_REF" >> "$GITHUB_OUTPUT"
+          echo "changed_apps=$CHANGED_APPS" >> "$GITHUB_OUTPUT"
 
       - name: Build versions line
         id: ver
         shell: bash
         run: |
           set -euo pipefail
+
           CHANGED_APPS="${{ steps.prep.outputs.changed_apps }}"
 
           if [ -z "$CHANGED_APPS" ]; then
@@ -91,6 +124,7 @@ jobs:
 
           for APP in $CHANGED_APPS; do
             PKG="apps/$APP/package.json"
+            [ -f "$PKG" ] || continue
             V=$(node -p "JSON.parse(require('fs').readFileSync('${PKG}','utf8')).version||''")
             PRETTY="${PRETTY}${SEP}\`${APP}@${V}\`"
             SEP=", "
