@@ -38,37 +38,24 @@ jobs:
           HEAD_REF="$BASE_BRANCH"
           CHANGED_APPS=""
 
-          # package.json 에서 version 읽기
+          # package.json 의 version 읽기
           get_version() {
           local pkg="$1"
           node -p "try{JSON.parse(require('fs').readFileSync('${pkg}','utf8')).version||''}catch(e){''}"
           }
 
-          # x.y.z-rc.n -> x.y.z 로 변환 (매치 안 되면 빈 문자열)
-            strip_rc() {
-            local v="$1"
-            printf '%s' "$v" | sed -nE 's/^([0-9]+)\.([0-9]+)\.([0-9]+)-rc\.[0-9]+$/\1.\2.\3/p'
-          }
+         # x.y.z-rc.n -> x.y.z (매치 안 되면 빈 문자열)
+          strip_rc() {
+          local v="$1"
+          printf '%s' "$v" | sed -nE 's/^([0-9]+\.[0-9]+\.[0-9]+)-rc\.[0-9]+$/\1.\2.\3/p'
+         }
 
-          echo "::group::Version scan (before)"
           for APP in ${{ env.APPS }}; do
           PKG="apps/$APP/package.json"
-          if [ ! -f "$PKG" ]; then
-          echo "skip: $PKG not found" >&2
-          continue
-          fi
-          CUR=$(get_version "$PKG")
-          echo "before: $APP -> '$CUR'"
-          done
-          echo "::endgroup::"
-
-          # package.json 에서 실제로 -rc.N 제거
-          for APP in ${{ env.APPS }}; do
-          PKG="apps/$APP/package.json"
-          [ -f "$PKG" ] || continue
+          [ -f "$PKG" ] || { echo "skip: $PKG not found" >&2; continue; }
 
           CUR=$(get_version "$PKG")
-          [ -n "$CUR" ] || continue
+          [ -n "$CUR" ] || { echo "skip: $APP has empty version" >&2; continue; }
 
           NEW=$(strip_rc "$CUR")
 
@@ -86,8 +73,8 @@ jobs:
           fi
           done
 
-          # 변경이 있으면 rc-to-stable 브랜치 생성/업데이트
-          if [ -n "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
+          # apps/*/package.json 에 변경이 있는 경우에만 브랜치 생성
+          if ! git diff --quiet -- apps/*/package.json 2>/dev/null; then
           git switch -c release/rc-to-stable 2>/dev/null || git switch release/rc-to-stable
           git config user.name  "GitHub Actions"
           git config user.email "github-actions@github.com"
@@ -97,19 +84,7 @@ jobs:
           HEAD_REF="release/rc-to-stable"
           fi
 
-          # 공백 정리
-          CHANGED_APPS="$(echo "$CHANGED_APPS" | xargs || true)"
-
-          echo "::group::Version scan (after)"
-          for APP in ${{ env.APPS }}; do
-          PKG="apps/$APP/package.json"
-          [ -f "$PKG" ] || continue
-          NOW=$(get_version "$PKG")
-          echo "after:  $APP -> '$NOW'"
-          done
-          echo "::endgroup::"
-
-          echo "head=$HEAD_REF"         >> "$GITHUB_OUTPUT"
+          echo "head=$HEAD_REF" >> "$GITHUB_OUTPUT"
           echo "changed_apps=$CHANGED_APPS" >> "$GITHUB_OUTPUT"
 
       - name: Build versions line
