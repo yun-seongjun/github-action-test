@@ -33,75 +33,56 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          HEAD_REF="staging"
+
+          BASE_BRANCH="staging"
+          HEAD_REF="$BASE_BRANCH"
           CHANGED_APPS=""
 
+          # package.json 의 version 읽기
           get_version() {
-            local pkg="$1"
-            node -p "try{JSON.parse(require('fs').readFileSync('${pkg}','utf8')).version||''}catch(e){''}"
+          local pkg="$1"
+          node -p "try{JSON.parse(require('fs').readFileSync('${pkg}','utf8')).version||''}catch(e){''}"
           }
 
-          echo "::group::Version scan (before)"
+         # x.y.z-rc.n -> x.y.z (매치 안 되면 빈 문자열)
+          strip_rc() {
+          local v="$1"
+          printf '%s' "$v" | sed -nE 's/^([0-9]+\.[0-9]+\.[0-9]+)-rc\.[0-9]+$/\1.\2.\3/p'
+         }
+
           for APP in ${{ env.APPS }}; do
-            PKG="apps/$APP/package.json"
-            if [ ! -f "$PKG" ]; then
-              echo "skip: $PKG not found" >&2
-              continue
-            fi
-            CURRENT=$(get_version "$PKG")
-            echo "before: $APP -> '$CURRENT'"
-          done
-          echo "::endgroup::"
+          PKG="apps/$APP/package.json"
+          [ -f "$PKG" ] || { echo "skip: $PKG not found" >&2; continue; }
 
-          # package.json 에서 실제로 -rc.N 제거
-          for APP in ${{ env.APPS }}; do
-            PKG="apps/$APP/package.json"
-            [ -f "$PKG" ] || continue
+          CUR=$(get_version "$PKG")
+          [ -n "$CUR" ] || { echo "skip: $APP has empty version" >&2; continue; }
 
-            CURRENT=$(get_version "$PKG")
-            [ -n "$CURRENT" ] || continue
+          NEW=$(strip_rc "$CUR")
 
-            BASE=$(printf '%s' "$CURRENT" | sed -nE 's/^([0-9]+)\.([0-9]+)\.([0-9]+)-rc\.[0-9]+$/\1.\2.\3/p')
-
-            if [ -n "$BASE" ]; then
-              node -e "
-                const fs=require('fs'); const p='${PKG}';
-                const pkg=JSON.parse(fs.readFileSync(p,'utf8'));
-                pkg.version='${BASE}';
-                fs.writeFileSync(p, JSON.stringify(pkg,null,2)+'\n');
-              "
-              echo "write: $APP $CURRENT -> $BASE"
-
-              # 🔥 변경된 앱 기록(핵심)
-              CHANGED_APPS="$CHANGED_APPS $APP"
-
-            else
-              echo "keep:  $APP $CURRENT"
-            fi
-          done
-
-          # 브랜치 생성
-          if [ -n "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
-            git switch -c release/rc-to-stable || git switch release/rc-to-stable
-            git config user.name  "GitHub Actions"
-            git config user.email "github-actions@github.com"
-            git add apps/*/package.json
-            git commit -m "release: RC to stable"
-            git push --force-with-lease origin HEAD:release/rc-to-stable
-            HEAD_REF="release/rc-to-stable"
+          if [ -n "$NEW" ] && [ "$NEW" != "$CUR" ]; then
+            node -e "
+              const fs=require('fs'); const p='${PKG}';
+              const pkg=JSON.parse(fs.readFileSync(p,'utf8'));
+              pkg.version='${NEW}';
+              fs.writeFileSync(p, JSON.stringify(pkg, null, 2)+'\n');
+            "
+            echo "write: $APP $CUR -> $NEW"
+            CHANGED_APPS="$CHANGED_APPS $APP"
+          else
+            echo "keep:  $APP $CUR"
           fi
-
-          # Trim spaces
-          CHANGED_APPS="$(echo "$CHANGED_APPS" | xargs)"
-
-          echo "::group::Version scan (after)"
-          for APP in ${{ env.APPS }}; do
-            PKG="apps/$APP/package.json"
-            [ -f "$PKG" ] || continue
-            NOW=$(get_version "$PKG")
-            echo "after:  $APP -> '$NOW'"
           done
-          echo "::endgroup::"
+
+          # apps/*/package.json 에 변경이 있는 경우에만 브랜치 생성
+          if ! git diff --quiet -- apps/*/package.json 2>/dev/null; then
+          git switch -c release/rc-to-stable 2>/dev/null || git switch release/rc-to-stable
+          git config user.name  "GitHub Actions"
+          git config user.email "github-actions@github.com"
+          git add apps/*/package.json
+          git commit -m "release: RC to stable"
+          git push --force-with-lease origin HEAD:release/rc-to-stable
+          HEAD_REF="release/rc-to-stable"
+          fi
 
           echo "head=$HEAD_REF" >> "$GITHUB_OUTPUT"
           echo "changed_apps=$CHANGED_APPS" >> "$GITHUB_OUTPUT"
