@@ -124,11 +124,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 안전하게 staging 브랜치로 붙이기
+          # 🔒 항상 origin/staging 기준으로 로컬 동기화
           git fetch origin
           git checkout staging || git checkout -B staging origin/staging
+          git reset --hard origin/staging
 
           echo "Current branch: $(git rev-parse --abbrev-ref HEAD)"
+          git status -sb
 
           APP_PATH="${{ env.APP_PATH }}"
           PACKAGE_JSON="${APP_PATH}/package.json"
@@ -173,7 +175,7 @@ jobs:
           fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
           EOF
 
-          # 5) Git 커밋 & 푸시 (staging에만)
+          # 5) Git 커밋 & 푸시 (origin/staging에만)
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
