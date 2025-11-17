@@ -27,18 +27,15 @@ jobs:
         with:
           node-version: 22.17.1
 
-      - name: Prepare head branch
+      - name: Prepare staging (RC -> stable) and recreate remote staging
         id: prep
         shell: bash
         run: |
           set -euo pipefail
 
-          BASE_BRANCH="staging"
-          HEAD_REF="$BASE_BRANCH"
           CHANGED_APPS=""
-
           VERSIONS_LIST=""
-          DELIMITER=""
+          TITLE_SHORT=""
           FIRST_APP=""
           FIRST_VERSION=""
           COUNT=0
@@ -73,12 +70,10 @@ jobs:
                 pkg.version='${NEW}';
                 fs.writeFileSync(p, JSON.stringify(pkg, null, 2)+'\n');
               "
-              echo "write: $APP $CURRENT_VERSION -> $NEW"
+              echo "write: $APP ${CURRENT_VERSION} -> ${NEW}"
 
-              # 변경된 앱 목록에 추가
               CHANGED_APPS="$CHANGED_APPS $APP"
 
-              # PR 제목/본문 정보 쌓기 (RC → stable 된 앱만 기준)
               if [ -z "$FIRST_APP" ]; then
                 FIRST_APP="$APP"
                 FIRST_VERSION="$NEW"
@@ -89,35 +84,35 @@ jobs:
               else
                 VERSIONS_LIST="${VERSIONS_LIST}, \`${APP}@${NEW}\`"
               fi
+
               COUNT=$((COUNT+1))
             else
-              echo "keep:  $APP $CURRENT_VERSION"
+              echo "keep:  $APP ${CURRENT_VERSION}"
             fi
           done
 
-          # version 변경이 실제로 발생한 경우 별도 release 브랜치 생성/업데이트
+          # 실제로 변경이 있는 경우에만 staging 에 커밋 + 원격 staging 재생성
           if [ -n "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
-            # release/rc-to-stable 브랜치 새로 만들거나 기존 브랜치로 전환
-            git switch -c release/rc-to-stable 2>/dev/null || git switch release/rc-to-stable
             git config user.name  "GitHub Actions"
             git config user.email "github-actions@github.com"
 
             git add apps/*/package.json
             git commit -m "release: RC to stable"
 
-            # HEAD 를 release/rc-to-stable 로 강제 푸시
-            git push --force-with-lease origin HEAD:release/rc-to-stable
-            HEAD_REF="release/rc-to-stable"
+            echo "🗑 Delete remote staging (if exists)"
+            git push origin :staging || true
+
+            echo "⬆️ Push new staging branch"
+            git push -u origin staging
           fi
 
           # 앱 이름 목록 공백 정리
           CHANGED_APPS="$(echo "$CHANGED_APPS" | xargs || true)"
 
-          # 다음 step 들에서 사용할 output
-          echo "head=$HEAD_REF" >> "$GITHUB_OUTPUT"
+          # 다음 step 에서 쓸 output
+          echo "head=staging" >> "$GITHUB_OUTPUT"
           echo "changed_apps=$CHANGED_APPS" >> "$GITHUB_OUTPUT"
 
-          # 변경된 앱이 있는 경우에만 제목/본문용 문자열 출력
           if [ "$COUNT" -gt 0 ]; then
             if [ "$COUNT" -eq 1 ]; then
               TITLE_SHORT="\`${FIRST_APP}@${FIRST_VERSION}\`"
@@ -134,30 +129,28 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_REF: ${{ steps.prep.outputs.head }}
+          HEAD_REF: ${{ steps.prep.outputs.head }}            # 항상 staging
           TITLE_SHORT: ${{ steps.prep.outputs.title_short }}
           VERSIONS_LIST: ${{ steps.prep.outputs.versions_list }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
-          # 공통 PR 생성 함수 (1.base 브랜치, 2.타이틀 구분)
           create_pr() {
             local BASE_BRANCH="$1"
             local TITLE_PREFIX="$2"
 
             echo "=== base=$BASE_BRANCH, head=$HEAD_REF ==="
 
-            # base / head 최신 내용 가져오기
             git fetch origin "$BASE_BRANCH" "$HEAD_REF"
 
-            # diff 없으면 PR 생성 안함
+            # diff 없으면 PR 생성 안 함
             if git diff --quiet "origin/$BASE_BRANCH" "origin/$HEAD_REF"; then
               echo "No diff between $HEAD_REF and $BASE_BRANCH; skipping PR."
               return
             fi
 
-            # 동일한 base/head 조합의 PR 이 이미 있으면 새로 만들지 않음
+            # 같은 base/head 조합의 PR이 이미 있으면 새로 만들지 않음
             if gh pr list --repo "$REPO" --base "$BASE_BRANCH" --head "$HEAD_REF" \
               --json number -q '.[0].number' | grep -q '^[0-9]\+$'; then
               echo "PR already exists for head=$HEAD_REF -> $BASE_BRANCH; skipping create."

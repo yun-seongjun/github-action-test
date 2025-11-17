@@ -17,103 +17,140 @@ jobs:
   deploy:
     if: github.ref_name == 'main' || github.ref_name == 'staging'
     runs-on: ubuntu-latest
-#    env:
-#      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-#      VERCEL_PROJECT_ID: ${{ github.event.inputs.app == 'NEUBIE_GO' && secrets.VERCEL_PROJECT_ID_GO || github.event.inputs.app == 'NEUBIE_ORDER' && secrets.VERCEL_PROJECT_ID_ORDER || secrets.VERCEL_PROJECT_ID_ORDER_ADMIN }}
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ github.event.inputs.app == 'NEUBIE_GO' && secrets.VERCEL_PROJECT_ID_GO || github.event.inputs.app == 'NEUBIE_ORDER' && secrets.VERCEL_PROJECT_ID_ORDER || secrets.VERCEL_PROJECT_ID_ORDER_ADMIN }}
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-#      - name: Set App Name for slack notification
-#        run: |
-#          if [[ "${{ github.event.inputs.app }}" == "NEUBIE_GO" ]]; then
-#            echo "APP_NAME=뉴비고" >> $GITHUB_ENV
-#          elif [[ "${{ github.event.inputs.app }}" == "NEUBIE_ORDER" ]]; then
-#            echo "APP_NAME=뉴비오더" >> $GITHUB_ENV
-#          elif [[ "${{ github.event.inputs.app }}" == "NEUBIE_ORDER_ADMIN" ]]; then
-#            echo "APP_NAME=뉴비오더 어드민" >> $GITHUB_ENV
-#          fi
-#
-#      - name: Install Vercel CLI
-#        run: npm install --global vercel@latest
-#
-#      - name: Pull Vercel Environment Information
-#        run: |
-#          if [ "${{ github.ref_name }}" == "main" ]; then
-#            vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
-#          else
-#            vercel pull --yes --environment=preview --git-branch=staging --token=${{ secrets.VERCEL_TOKEN }}
-#          fi
-#
-#
-#      - name: Build Project Artifacts
-#        run: |
-#          if [ "${{ github.ref_name }}" == "main" ]; then
-#            vercel build --prod
-#          else
-#            vercel build
-#          fi
-#
-#      - name: Deploy Project Artifacts to Vercel
-#        run: |
-#          if [ "${{ github.ref_name }}" == "main" ]; then
-#            vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
-#          else
-#            vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
-#          fi
-#
-#      - name: Slack Notification
-#        if: always()
-#        uses: rtCamp/action-slack-notify@v2
-#        env:
-#          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-#          SLACK_COLOR: ${{ job.status == 'success' && 'good' || job.status == 'failure' && 'danger' || 'warning' }}
-#          SLACK_CUSTOM_PAYLOAD: |
-#            {
-#              "blocks": [
-#                {
-#                  "type": "section",
-#                  "text": {
-#                    "type": "mrkdwn",
-#                    "text": "*🚀 프론트엔드 배포 완료 알림*"
-#                  }
-#                },
-#                {
-#                  "type": "section",
-#                  "text": {
-#                    "type": "mrkdwn",
-#                    "text": "앱: *${{ env.APP_NAME }}*\n배포 환경: *${{ github.ref_name }}*\n배포 결과: *${{ job.status == 'success' && '성공' || '실패' }}*"
-#                  }
-#                }
-#              ]
-#            }
-#
-#      - name: Trigger QA Test Workflow
-#        if: success() && github.ref_name == 'staging'
-#        uses: ./.github/actions/trigger-qa-test
-#        with:
-#          jenkins_url: ${{ secrets.JENKINS_URL }}
-#          jenkins_user: ${{ secrets.JENKINS_USER }}
-#          jenkins_token: ${{ secrets.JENKINS_TOKEN }}
-
-
-      - name: Update staging RC version
-        if: success() && github.ref_name == 'staging'
+      - name: Set App Name for slack notification
         run: |
-          git fetch --tags
-
-          LAST_RC_NUM=$(git tag --list 'staging-rc-*' | sed 's/staging-rc-//' | sort -n | tail -n1)
-
-          if [ -z "$LAST_RC_NUM" ]; then
-            NEXT_RC_NUM=1
-          else
-            NEXT_RC_NUM=$((LAST_RC_NUM+1))
+          if [[ "${{ github.event.inputs.app }}" == "NEUBIE_GO" ]]; then
+            echo "APP_NAME=뉴비고" >> $GITHUB_ENV
+            echo "APP_PATH=apps/neubie-go" >> $GITHUB_ENV
+          elif [[ "${{ github.event.inputs.app }}" == "NEUBIE_ORDER" ]]; then
+            echo "APP_NAME=뉴비오더" >> $GITHUB_ENV
+            echo "APP_PATH=apps/neubie-order" >> $GITHUB_ENV
+          elif [[ "${{ github.event.inputs.app }}" == "NEUBIE_ORDER_ADMIN" ]]; then
+            echo "APP_NAME=뉴비오더 어드민" >> $GITHUB_ENV
+            echo "APP_PATH=apps/neubie-order-admin" >> $GITHUB_ENV
           fi
 
-          NEW_TAG="staging-rc-${NEXT_RC_NUM}"
-          echo "Create new staging RC tag: ${NEW_TAG}"
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
 
-          git tag "${NEW_TAG}"
-          git push origin "${NEW_TAG}"
+      - name: Pull Vercel Environment Information
+        run: |
+          if [ "${{ github.ref_name }}" == "main" ]; then
+            vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+          else
+            vercel pull --yes --environment=preview --git-branch=staging --token=${{ secrets.VERCEL_TOKEN }}
+          fi
+
+
+      - name: Build Project Artifacts
+        run: |
+          if [ "${{ github.ref_name }}" == "main" ]; then
+            vercel build --prod
+          else
+            vercel build
+          fi
+
+      - name: Deploy Project Artifacts to Vercel
+        run: |
+          if [ "${{ github.ref_name }}" == "main" ]; then
+            vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+          else
+            vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
+          fi
+
+      - name: Slack Notification
+        if: always()
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_COLOR: ${{ job.status == 'success' && 'good' || job.status == 'failure' && 'danger' || 'warning' }}
+          SLACK_CUSTOM_PAYLOAD: |
+            {
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*🚀 프론트엔드 배포 완료 알림*"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "앱: *${{ env.APP_NAME }}*\n배포 환경: *${{ github.ref_name }}*\n배포 결과: *${{ job.status == 'success' && '성공' || '실패' }}*"
+                  }
+                }
+              ]
+            }
+
+      - name: Trigger QA Test Workflow
+        if: success() && github.ref_name == 'staging'
+        uses: ./.github/actions/trigger-qa-test
+        with:
+          jenkins_url: ${{ secrets.JENKINS_URL }}
+          jenkins_user: ${{ secrets.JENKINS_USER }}
+          jenkins_token: ${{ secrets.JENKINS_TOKEN }}
+
+      - name: Update staging RC version based on previous staging and recreate branch
+        if: success() && github.ref_name == 'staging'
+        run: |
+          set -euo pipefail
+
+          APP_PATH="${{ env.APP_PATH }}"
+          PACKAGE_JSON="${APP_PATH}/package.json"
+
+          # origin/staging 기준으로 임시 브랜치("__tmp_staging_version") 생성 후 현재 버전 읽기
+          git fetch origin staging
+          git checkout -B __tmp_staging_version origin/staging  || {
+            echo "❌ origin/staging not found. Cannot read RC version."
+            exit 1
+          }
+          CURRENT_VERSION=$(node -p "require('./${PACKAGE_JSON}').version")
+
+          # base(-rc.N) 형태로 파싱 후 rc버전 증가
+          BASE_VERSION="$CURRENT_VERSION"
+          RC_NUM=0
+
+          # "-rc." 가 붙어 있으면 rc 번호와 base 잘라내기
+          if [[ "$CURRENT_VERSION" == *-rc.* ]]; then
+            BASE_VERSION="${CURRENT_VERSION%-rc.*}"   # "-rc.숫자" 앞부분
+            RC_NUM="${CURRENT_VERSION##*-rc.}"        # 마지막 "-rc." 이후 숫자
+          fi
+
+          NEXT_RC_NUM=$((RC_NUM+1))
+          NEW_VERSION="${BASE_VERSION}-rc.${NEXT_RC_NUM}"
+
+          # staging 기준으로 staging 브랜치 재생성 후 package.json 에 NEW_VERSION 반영
+          git checkout -B staging origin/staging
+
+          if [ ! -f "$PACKAGE_JSON" ]; then
+            echo "❌ package.json not found"
+            exit 1
+          fi
+
+          # package.json version 갱신
+          node - <<EOF
+            const fs = require('fs');
+            const path = '${PACKAGE_JSON}';
+            const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+            pkg.version = '${NEW_VERSION}';
+            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+          EOF
+
+          git config user.name "GitHub Actions"
+          git config user.email "github-actions@github.com"
+
+          git add "$PACKAGE_JSON"
+          git commit -m "🚀 [${APP_PATH#apps/}] ${CURRENT_VERSION} → ${NEW_VERSION}" || echo "No changes to commit"
+
+          # 원격 staging 삭제 후, 새 staging 푸시
+          git push origin :staging || true
+          git push -u origin staging
