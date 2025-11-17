@@ -38,6 +38,13 @@ jobs:
           HEAD_REF="$BASE_BRANCH"
           CHANGED_APPS=""
 
+          # 제목, 본문 구성용 변수
+          VERSIONS_MARKDOWN=""
+          DELIMITER=""
+          FIRST_APP=""
+          FIRST_VERSION=""
+          COUNT=0
+
           # package.json 에서 version 읽기
           get_version() {
             local pkg="$1"
@@ -80,7 +87,22 @@ jobs:
                 fs.writeFileSync(p, JSON.stringify(pkg, null, 2)+'\n');
               "
               echo "write: $APP $CURRENT -> $NEW"
+
               CHANGED_APPS="$CHANGED_APPS $APP"
+
+              # 제목, 본문용 데이터 쌓기 (RC → stable 된 앱만)
+              if [ -z "$FIRST_APP" ]; then
+                FIRST_APP="$APP"
+                FIRST_VERSION="$NEW"
+              fi
+
+              if [ -z "$VERSIONS_MARKDOWN" ]; then
+                VERSIONS_MARKDOWN="\`${APP}@${NEW}\`"
+              else
+                VERSIONS_MARKDOWN="${VERSIONS_MARKDOWN}, \`${APP}@${NEW}\`"
+              fi
+
+              COUNT=$((COUNT+1))
             else
               echo "keep:  $APP $CURRENT"
             fi
@@ -112,82 +134,46 @@ jobs:
           echo "head=$HEAD_REF" >> "$GITHUB_OUTPUT"
           echo "changed_apps=$CHANGED_APPS" >> "$GITHUB_OUTPUT"
 
-      - name: Build versions line
-        id: ver
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          CHANGED_APPS="${{ steps.prep.outputs.changed_apps }}"
-
+          # pretty / title_short 출력
           if [ -z "$CHANGED_APPS" ]; then
             echo "pretty=(no app versions found)" >> "$GITHUB_OUTPUT"
             echo "title_short=(no app versions found)" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          VERSIONS_MARKDOWN=""
-          DELIMITER=""
-
-          FIRST_APP=""
-          FIRST_VERSION=""
-          COUNT=0
-
-          # 전체 목록 생성 + 첫 앱/버전 저장
-          for APP in $CHANGED_APPS; do
-            PACKAGE="apps/$APP/package.json"
-            [ -f "$PACKAGE" ] || continue
-
-            VERSION="$(node -p "JSON.parse(require('fs').readFileSync('${PACKAGE}','utf8')).version||''")"
-
-            VERSIONS_MARKDOWN="${VERSIONS_MARKDOWN}${DELIMITER}\`${APP}@${VERSION}\`"
-            DELIMITER=", "
-
-            COUNT=$((COUNT+1))
-
-            if [ -z "$FIRST_APP" ]; then
-              FIRST_APP="$APP"
-              FIRST_VERSION="$VERSION"
-            fi
-          done
-
-          # 제목용: 첫 앱 + 버전 + 나머지 개수
-          if [ "$COUNT" -eq 1 ]; then
-            TITLE_SHORT="\`${FIRST_APP}@${FIRST_VERSION}\`"
           else
-            REMAIN=$((COUNT - 1))
-            TITLE_SHORT="\`${FIRST_APP}@${FIRST_VERSION}\` 외 ${REMAIN}개"
-          fi
+            if [ "$COUNT" -eq 1 ]; then
+              TITLE_SHORT="\`${FIRST_APP}@${FIRST_VERSION}\`"
+            else
+              REMAIN=$((COUNT - 1))
+              TITLE_SHORT="\`${FIRST_APP}@${FIRST_VERSION}\` 외 ${REMAIN}개"
+            fi
 
-          echo "pretty=$VERSIONS_MARKDOWN" >> "$GITHUB_OUTPUT"
-          echo "title_short=$TITLE_SHORT" >> "$GITHUB_OUTPUT"
+            echo "pretty=$VERSIONS_MARKDOWN" >> "$GITHUB_OUTPUT"
+            echo "title_short=$TITLE_SHORT" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Create PR to main & dev
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ steps.prep.outputs.head }}
-          TITLE_SHORT: ${{ steps.ver.outputs.title_short }}
-          VERSIONS_PRETTY: ${{ steps.ver.outputs.pretty }}
+          TITLE_SHORT: ${{ steps.prep.outputs.title_short }}
+          VERSIONS_PRETTY: ${{ steps.prep.outputs.pretty }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
-          # 공용 함수: base 브랜치 하나에 대해 PR 생성
           create_pr() {
             local BASE_BRANCH="$1"
             local TITLE_PREFIX="$2"
 
-            # base, head 둘 다 fetch
+            echo "=== base=$BASE_BRANCH, head=$HEAD_REF ==="
+
             git fetch origin "$BASE_BRANCH" "$HEAD_REF"
 
-            # diff 없으면 PR 생성 안 함
             if git diff --quiet "origin/$BASE_BRANCH" "origin/$HEAD_REF"; then
               echo "No diff between $HEAD_REF and $BASE_BRANCH; skipping PR."
               return
             fi
 
-            # 같은 head/base 조합 PR 이미 있으면 생성 안 함
             if gh pr list --repo "$REPO" --base "$BASE_BRANCH" --head "$HEAD_REF" \
               --json number -q '.[0].number' | grep -q '^[0-9]\+$'; then
               echo "PR already exists for head=$HEAD_REF -> $BASE_BRANCH; skipping create."
@@ -208,8 +194,5 @@ jobs:
               --body  "$BODY"
           }
 
-          # main용
           create_pr "main" "🚀 Release:"
-
-          # dev용
-          create_pr "dev" "🔀 Staging -> Dev:"
+          create_pr "dev"  "🔀 Staging -> Dev:"
