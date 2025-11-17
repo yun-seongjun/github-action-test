@@ -112,13 +112,6 @@ jobs:
           echo "head=$HEAD_REF" >> "$GITHUB_OUTPUT"
           echo "changed_apps=$CHANGED_APPS" >> "$GITHUB_OUTPUT"
 
-          # RC 제거 여부 출력 (태그 삭제 step 조건용)
-          if [ -n "$CHANGED_APPS" ]; then
-            echo "rc_stripped=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "rc_stripped=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Build versions line
         id: ver
         shell: bash
@@ -169,45 +162,6 @@ jobs:
           echo "pretty=$VERSIONS_MARKDOWN" >> "$GITHUB_OUTPUT"
           echo "title_short=$TITLE_SHORT" >> "$GITHUB_OUTPUT"
 
-      - name: Delete ALL RC tags for changed apps
-        if: steps.prep.outputs.rc_stripped == 'true'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-
-          git fetch --tags --force --prune origin
-
-          CHANGED_APPS="${{ steps.prep.outputs.changed_apps }}"
-          [ -n "$CHANGED_APPS" ] || exit 0
-
-          for APP in $CHANGED_APPS; do
-            TAGS="$(git ls-remote --tags origin "${APP}@*-rc.*" "${APP}@v*-rc.*" \
-              | awk '{print $2}' | sed 's@^refs/tags/@@')"
-
-            [ -n "$TAGS" ] || continue
-
-            echo "Found RC tags for $APP:"
-            printf '  %s\n' $TAGS
-
-            for T in $TAGS; do
-              ENC="$(printf '%s' "$T" | jq -sRr @uri)"  # URL-encode '@', '.'
-              echo "Deleting: $T"
-              if ! gh api -X DELETE "repos/${REPO}/git/refs/tags/${ENC}"; then
-                echo "API delete failed for $T, fallback to git push…"
-                git push origin ":refs/tags/$T"
-              fi
-            done
-          done
-
-          echo "Remaining RC tags (should be empty):"
-          for APP in $CHANGED_APPS; do
-            git ls-remote --tags origin "${APP}@*-rc.*" "${APP}@v*-rc.*" \
-              | awk '{print $2}' | sed 's@^refs/tags/@@' || true
-          done
-
       - name: Create PR to main & dev
         shell: bash
         env:
@@ -223,9 +177,6 @@ jobs:
           create_pr() {
             local BASE_BRANCH="$1"
             local TITLE_PREFIX="$2"
-
-            echo ""
-            echo "=== Processing base=$BASE_BRANCH, head=$HEAD_REF ==="
 
             # base, head 둘 다 fetch
             git fetch origin "$BASE_BRANCH" "$HEAD_REF"
