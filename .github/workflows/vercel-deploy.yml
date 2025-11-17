@@ -17,9 +17,9 @@ jobs:
   deploy:
     if: github.ref_name == 'main' || github.ref_name == 'staging'
     runs-on: ubuntu-latest
-    env:
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ github.event.inputs.app == 'NEUBIE_GO' && secrets.VERCEL_PROJECT_ID_GO || github.event.inputs.app == 'NEUBIE_ORDER' && secrets.VERCEL_PROJECT_ID_ORDER || secrets.VERCEL_PROJECT_ID_ORDER_ADMIN }}
+#    env:
+#      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+#      VERCEL_PROJECT_ID: ${{ github.event.inputs.app == 'NEUBIE_GO' && secrets.VERCEL_PROJECT_ID_GO || github.event.inputs.app == 'NEUBIE_ORDER' && secrets.VERCEL_PROJECT_ID_ORDER || secrets.VERCEL_PROJECT_ID_ORDER_ADMIN }}
 
     steps:
       - uses: actions/checkout@v4
