@@ -29,15 +29,18 @@ jobs:
         with:
           fetch-depth: 0
 
-#      - name: Set App Name for slack notification
-#        run: |
-#          if [[ "${{ github.event.inputs.app }}" == "NEUBIE_GO" ]]; then
-#            echo "APP_NAME=뉴비고" >> $GITHUB_ENV
-#          elif [[ "${{ github.event.inputs.app }}" == "NEUBIE_ORDER" ]]; then
-#            echo "APP_NAME=뉴비오더" >> $GITHUB_ENV
-#          elif [[ "${{ github.event.inputs.app }}" == "NEUBIE_ORDER_ADMIN" ]]; then
-#            echo "APP_NAME=뉴비오더 어드민" >> $GITHUB_ENV
-#          fi
+      - name: Set App Name for slack notification
+        run: |
+          if [[ "${{ github.event.inputs.app }}" == "NEUBIE_GO" ]]; then
+            echo "APP_NAME=뉴비고" >> $GITHUB_ENV
+            echo "APP_PATH=apps/neubie-go" >> $GITHUB_ENV
+          elif [[ "${{ github.event.inputs.app }}" == "NEUBIE_ORDER" ]]; then
+            echo "APP_NAME=뉴비오더" >> $GITHUB_ENV
+            echo "APP_PATH=apps/neubie-order" >> $GITHUB_ENV
+          elif [[ "${{ github.event.inputs.app }}" == "NEUBIE_ORDER_ADMIN" ]]; then
+            echo "APP_NAME=뉴비오더 어드민" >> $GITHUB_ENV
+            echo "APP_PATH=apps/neubie-order-admin" >> $GITHUB_ENV
+          fi
 #
 #      - name: Install Vercel CLI
 #        run: npm install --global vercel@latest
@@ -115,24 +118,36 @@ jobs:
           # 원격 staging 삭제 (없어도 에러 무시)
           git push origin :staging || true
 
-
       - name: Update staging RC version in package.json
         if: success() && github.ref_name == 'staging'
         run: |
-          # 현재 브랜치(staging) 기준
-          git fetch
+          set -euo pipefail
 
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          echo "Current version in package.json: ${CURRENT_VERSION}"
+          APP_PATH="${{ env.APP_PATH }}"
+          PACKAGE_JSON="${APP_PATH}/package.json"
 
+          echo "🔧 Target app: $APP_PATH"
+          echo "🔧 Using package.json: $PACKAGE_JSON"
+
+          if [ ! -f "$PACKAGE_JSON" ]; then
+            echo "❌ package.json not found: $PACKAGE_JSON"
+            exit 1
+          fi
+
+          # 1) 해당 앱의 버전 읽기
+          CURRENT_VERSION=$(node -p "require('./${PACKAGE_JSON}').version")
+          echo "Current version: ${CURRENT_VERSION}"
+
+          # 2) 버전 형식 파싱 (1.2.3 또는 1.2.3-rc.1)
           if [[ "$CURRENT_VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)(-rc\.([0-9]+))?$ ]]; then
             BASE_VERSION="${BASH_REMATCH[1]}"
             RC_NUM="${BASH_REMATCH[3]}"
           else
-            echo "version 형식이 예상과 다릅니다."
+            echo "version 형식이 잘못되었습니다. (예: 1.2.3 또는 1.2.3-rc.1)"
             exit 1
           fi
 
+          # 3) RC 증가
           if [ -z "$RC_NUM" ]; then
             NEXT_RC_NUM=1
           else
@@ -140,19 +155,22 @@ jobs:
           fi
 
           NEW_VERSION="${BASE_VERSION}-rc.${NEXT_RC_NUM}"
-          echo "New RC version: ${NEW_VERSION}"
+          echo "New version: ${NEW_VERSION}"
 
+          # 4) 파일 업데이트
           node - <<EOF
           const fs = require('fs');
-          const pkg = require('./package.json');
-          pkg.version = "${NEW_VERSION}";
-          fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
+          const path = '${PACKAGE_JSON}';
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          pkg.version = '${NEW_VERSION}';
+          fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
           EOF
 
+          # 5) Git 커밋 & 푸시
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add package.json
-          git commit -m "chore: bump staging RC version to ${NEW_VERSION}" || echo "No changes to commit"
+          git add "$PACKAGE_JSON"
+          git commit -m "chore(${APP_PATH}): bump RC version to ${NEW_VERSION}" || echo "No changes"
 
-          git push -u origin staging
+          git push -u origin "${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
