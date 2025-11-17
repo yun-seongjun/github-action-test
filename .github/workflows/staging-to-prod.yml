@@ -18,7 +18,6 @@ jobs:
       - name: Checkout staging
         uses: actions/checkout@v4
         with:
-          # 항상 staging 브랜치 기준으로 작업
           ref: staging
           fetch-depth: 0
           token: ${{ github.token }}
@@ -26,7 +25,6 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          # package.json version 읽기용 node
           node-version: 22.17.1
 
       - name: Prepare head branch
@@ -45,7 +43,7 @@ jobs:
           FIRST_VERSION=""
           COUNT=0
 
-          # package.json 에서 version 읽기
+          # package.json 에서 version 가져오기
           get_version() {
             local package="$1"
             node -p "try{JSON.parse(require('fs').readFileSync('${package}','utf8')).version||''}catch(e){''}"

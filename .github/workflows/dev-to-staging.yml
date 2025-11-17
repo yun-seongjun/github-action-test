@@ -7,7 +7,7 @@ on:
         description: "New version"
         type: choice
         required: true
-        default: patch
+        default: minor
         options:
           - patch
           - minor
@@ -74,7 +74,7 @@ jobs:
           TARGETAPPS="$INPUT_APPS"
 
           if [ "$INPUT_APPS" = "auto" ]; then
-          # 경로가 "apps/" 로 시작하면서 "/" 기준 2번째 가져오기
+          # 경로가 "apps/" 로 시작하면서 "/" 기준 2번째 값가져오기
           TARGETAPPS=$(git diff --name-only origin/main..HEAD 2>/dev/null \
           | awk -F/ '/^apps\//{print $2}' || true)
           fi
@@ -124,11 +124,11 @@ jobs:
           }
 
           for APP in $APPS; do
-            PKG="apps/$APP/package.json"
-            [ -f "$PKG" ] || continue
+            PACKAGE="apps/$APP/package.json"
+            [ -f "$PACKAGE" ] || continue
 
             # 현재 버전 base version 가져오기
-            BASE=$(node -p "require('./$PKG').version")
+            BASE=$(node -p "require('./$PACKAGE').version")
             NEWBASE=$(new_version "$BASE" "$NEW_LEVEL")
 
             # dev to staging은 버전당 한 번만이라고 가정 → 항상 rc.1
@@ -137,13 +137,13 @@ jobs:
             # package.json version 갱신
             node -e "
               const fs = require('fs');
-              const package_json = '$PKG';
+              const package_json = '$PACKAGE';
               const package = JSON.parse(fs.readFileSync(package_json, 'utf8'));
               package.version = '$NEW';
               fs.writeFileSync(package_json, JSON.stringify(package, null, 2) + '\n');
             "
 
-            git add "$PKG"
+            git add "$PACKAGE"
             git commit -m "🚀 [$APP] ${BASE} → ${NEW}"
           done
 
