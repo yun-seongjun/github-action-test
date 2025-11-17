@@ -134,11 +134,11 @@ jobs:
             exit 1
           fi
 
-          # 1) 해당 앱의 버전 읽기
+          # 1) 해당 앱의 현재 버전 읽기 (예: 1.24.0 또는 1.24.0-rc.1)
           CURRENT_VERSION=$(node -p "require('./${PACKAGE_JSON}').version")
           echo "Current version: ${CURRENT_VERSION}"
 
-          # 2) 버전 형식 파싱 (1.2.3 또는 1.2.3-rc.1)
+          # 2) base(-rc.N) 패턴으로 파싱
           if [[ "$CURRENT_VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)(-rc\.([0-9]+))?$ ]]; then
             BASE_VERSION="${BASH_REMATCH[1]}"
             RC_NUM="${BASH_REMATCH[3]}"
@@ -147,7 +147,7 @@ jobs:
             exit 1
           fi
 
-          # 3) RC 증가
+          # 3) rc 번호 증가
           if [ -z "$RC_NUM" ]; then
             NEXT_RC_NUM=1
           else
@@ -157,7 +157,7 @@ jobs:
           NEW_VERSION="${BASE_VERSION}-rc.${NEXT_RC_NUM}"
           echo "New version: ${NEW_VERSION}"
 
-          # 4) 파일 업데이트
+          # 4) package.json 업데이트
           node - <<EOF
           const fs = require('fs');
           const path = '${PACKAGE_JSON}';
