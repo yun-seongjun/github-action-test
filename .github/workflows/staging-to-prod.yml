@@ -57,18 +57,6 @@ jobs:
             printf '%s' "$v" | sed -nE 's/^([0-9]+)\.([0-9]+)\.([0-9]+)-rc\.[0-9]+$/\1.\2.\3/p'
           }
 
-          echo "::group::Version scan (before)"
-          for APP in ${{ env.APPS }}; do
-            PACKAGE="apps/$APP/package.json"
-            if [ ! -f "$PACKAGE" ]; then
-              echo "skip: $PACKAGE not found" >&2
-              continue
-            fi
-            CURRENT="$(get_version "$PACKAGE")"
-            echo "before: $APP -> '$CURRENT'"
-          done
-          echo "::endgroup::"
-
           # package.json 에서 실제로 -rc.N 제거
           for APP in ${{ env.APPS }}; do
             PACKAGE="apps/$APP/package.json"
@@ -121,15 +109,6 @@ jobs:
 
           # 공백 정리
           CHANGED_APPS="$(echo "$CHANGED_APPS" | xargs || true)"
-
-          echo "::group::Version scan (after)"
-          for APP in ${{ env.APPS }}; do
-            PACKAGE="apps/$APP/package.json"
-            [ -f "$PACKAGE" ] || continue
-            NOW="$(get_version "$PACKAGE")"
-            echo "after:  $APP -> '$NOW'"
-          done
-          echo "::endgroup::"
 
           echo "head=$HEAD_REF" >> "$GITHUB_OUTPUT"
           echo "changed_apps=$CHANGED_APPS" >> "$GITHUB_OUTPUT"
