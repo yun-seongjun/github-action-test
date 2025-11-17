@@ -113,53 +113,48 @@ jobs:
           APP_PATH="${{ env.APP_PATH }}"
           PACKAGE_JSON="${APP_PATH}/package.json"
 
-          # 0. staging 최신 가져오기
+          # origin/staging 기준으로 현재 버전 읽기
           git fetch origin staging
-
-          # 1. 이전 origin/staging 기준으로 현재 버전 읽기
           git checkout -B __tmp_staging_version origin/staging  || {
             echo "❌ origin/staging not found. Cannot read RC version."
             exit 1
           }
-
           CURRENT_VERSION=$(node -p "require('./${PACKAGE_JSON}').version")
 
-          # 2. base(-rc.N) 형태로 파싱 후 rc버전 증가
+          # base(-rc.N) 형태로 파싱 후 rc버전 증가
           BASE_VERSION="$CURRENT_VERSION"
           RC_NUM=0
 
           # "-rc." 가 붙어 있으면 rc 번호만 뽑고 base 잘라내기
           if [[ "$CURRENT_VERSION" == *-rc.* ]]; then
-          BASE_VERSION="${CURRENT_VERSION%-rc.*}"   # "-rc.숫자" 앞부분
-          RC_NUM="${CURRENT_VERSION##*-rc.}"        # 마지막 "-rc." 이후 숫자
+            BASE_VERSION="${CURRENT_VERSION%-rc.*}"   # "-rc.숫자" 앞부분
+            RC_NUM="${CURRENT_VERSION##*-rc.}"        # 마지막 "-rc." 이후 숫자
           fi
 
           NEXT_RC_NUM=$((RC_NUM+1))
           NEW_VERSION="${BASE_VERSION}-rc.${NEXT_RC_NUM}"
 
-          # 4. staging 기준으로 staging 브랜치 재생성
+          # staging 기준으로 staging 브랜치 재생성 후 package.json 에 NEW_VERSION 반영
           git checkout -B staging origin/staging
 
-          # 5. 새 staging 작업 트리에서 package.json 에 NEW_VERSION 반영
           if [ ! -f "$PACKAGE_JSON" ]; then
             echo "❌ package.json not found at $PACKAGE_JSON on new staging"
             exit 1
           fi
 
           node - <<EOF
-          const fs = require('fs');
-          const path = '${PACKAGE_JSON}';
-          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
-          pkg.version = '${NEW_VERSION}';
-          fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+            const fs = require('fs');
+            const path = '${PACKAGE_JSON}';
+            const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+            pkg.version = '${NEW_VERSION}';
+            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
           EOF
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
+          git config user.name "GitHub Actions"
+          git config user.email "github-actions@github.com"
           git add "$PACKAGE_JSON"
           git commit -m "🚀 [${APP_PATH#apps/}] ${CURRENT_VERSION} → ${NEW_VERSION}" || echo "No changes to commit"
 
-          # 6. 원격 staging 삭제 후, 새 staging 푸시
+          # 원격 staging 삭제 후, 새 staging 푸시
           git push origin :staging || true
           git push -u origin staging
