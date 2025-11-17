@@ -93,16 +93,13 @@ jobs:
 
           # 실제로 변경이 있는 경우에만 staging 에 커밋 + 원격 staging 재생성
           if [ -n "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
-            git config user.name  "GitHub Actions"
+            git config user.name "GitHub Actions"
             git config user.email "github-actions@github.com"
 
             git add apps/*/package.json
             git commit -m "release: RC to stable"
 
-            echo "🗑 Delete remote staging (if exists)"
             git push origin :staging || true
-
-            echo "⬆️ Push new staging branch"
             git push -u origin staging
           fi
 
@@ -139,8 +136,6 @@ jobs:
           create_pr() {
             local BASE_BRANCH="$1"
             local TITLE_PREFIX="$2"
-
-            echo "=== base=$BASE_BRANCH, head=$HEAD_REF ==="
 
             git fetch origin "$BASE_BRANCH" "$HEAD_REF"
 
