@@ -23,7 +23,7 @@ jobs:
           fetch-tags: true
           token: ${{ github.token }}
 
-      - name: Setup Node.js (22.17.1)
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22.17.1
@@ -40,61 +40,61 @@ jobs:
 
           # package.json 에서 version 읽기
           get_version() {
-          local pkg="$1"
-          node -p "try{JSON.parse(require('fs').readFileSync('${pkg}','utf8')).version||''}catch(e){''}"
+            local pkg="$1"
+            node -p "try{JSON.parse(require('fs').readFileSync('${pkg}','utf8')).version||''}catch(e){''}"
           }
 
           # x.y.z-rc.n -> x.y.z 로 변환 (매치 안 되면 빈 문자열)
-            strip_rc() {
+          strip_rc() {
             local v="$1"
             printf '%s' "$v" | sed -nE 's/^([0-9]+)\.([0-9]+)\.([0-9]+)-rc\.[0-9]+$/\1.\2.\3/p'
           }
 
           echo "::group::Version scan (before)"
           for APP in ${{ env.APPS }}; do
-          PACKAGE="apps/$APP/package.json"
-          if [ ! -f "$PACKAGE" ]; then
-          echo "skip: $PACKAGE not found" >&2
-          continue
-          fi
-          CURRENT=$(get_version "$PACKAGE")
-          echo "before: $APP -> '$CURRENT'"
+            PACKAGE="apps/$APP/package.json"
+            if [ ! -f "$PACKAGE" ]; then
+              echo "skip: $PACKAGE not found" >&2
+              continue
+            fi
+            CURRENT="$(get_version "$PACKAGE")"
+            echo "before: $APP -> '$CURRENT'"
           done
           echo "::endgroup::"
 
           # package.json 에서 실제로 -rc.N 제거
           for APP in ${{ env.APPS }}; do
-          PACKAGE="apps/$APP/package.json"
-          [ -f "$PACKAGE" ] || continue
+            PACKAGE="apps/$APP/package.json"
+            [ -f "$PACKAGE" ] || continue
 
-          CURRENT=$(get_version "$PACKAGE")
-          [ -n "$CURRENT" ] || continue
+            CURRENT="$(get_version "$PACKAGE")"
+            [ -n "$CURRENT" ] || continue
 
-          NEW=$(strip_rc "$CURRENT")
+            NEW="$(strip_rc "$CURRENT")"
 
-          if [ -n "$NEW" ] && [ "$NEW" != "$CURRENT" ]; then
-            node -e "
-              const fs=require('fs'); const p='${PACKAGE}';
-              const pkg=JSON.parse(fs.readFileSync(p,'utf8'));
-              pkg.version='${NEW}';
-              fs.writeFileSync(p, JSON.stringify(pkg, null, 2)+'\n');
-            "
-            echo "write: $APP $CURRENT -> $NEW"
-            CHANGED_APPS="$CHANGED_APPS $APP"
-          else
-            echo "keep:  $APP $CURRENT"
-          fi
+            if [ -n "$NEW" ] && [ "$NEW" != "$CURRENT" ]; then
+              node -e "
+                const fs=require('fs'); const p='${PACKAGE}';
+                const pkg=JSON.parse(fs.readFileSync(p,'utf8'));
+                pkg.version='${NEW}';
+                fs.writeFileSync(p, JSON.stringify(pkg, null, 2)+'\n');
+              "
+              echo "write: $APP $CURRENT -> $NEW"
+              CHANGED_APPS="$CHANGED_APPS $APP"
+            else
+              echo "keep:  $APP $CURRENT"
+            fi
           done
 
-          # 변경이 있으면 rc-to-stable 브랜치 생성/업데이트
+          # 변경이 있으면 release/rc-to-stable 브랜치 생성/업데이트
           if [ -n "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
-          git switch -c release/rc-to-stable 2>/dev/null || git switch release/rc-to-stable
-          git config user.name  "GitHub Actions"
-          git config user.email "github-actions@github.com"
-          git add apps/*/package.json
-          git commit -m "release: RC to stable"
-          git push --force-with-lease origin HEAD:release/rc-to-stable
-          HEAD_REF="release/rc-to-stable"
+            git switch -c release/rc-to-stable 2>/dev/null || git switch release/rc-to-stable
+            git config user.name  "GitHub Actions"
+            git config user.email "github-actions@github.com"
+            git add apps/*/package.json
+            git commit -m "release: RC to stable"
+            git push --force-with-lease origin HEAD:release/rc-to-stable
+            HEAD_REF="release/rc-to-stable"
           fi
 
           # 공백 정리
@@ -102,10 +102,10 @@ jobs:
 
           echo "::group::Version scan (after)"
           for APP in ${{ env.APPS }}; do
-          PACKAGE="apps/$APP/package.json"
-          [ -f "$PACKAGE" ] || continue
-          NOW=$(get_version "$PACKAGE")
-          echo "after:  $APP -> '$NOW'"
+            PACKAGE="apps/$APP/package.json"
+            [ -f "$PACKAGE" ] || continue
+            NOW="$(get_version "$PACKAGE")"
+            echo "after:  $APP -> '$NOW'"
           done
           echo "::endgroup::"
 
@@ -126,7 +126,7 @@ jobs:
             exit 0
           fi
 
-          PRETTY=""
+          VERSIONS_MARKDOWN=""
           DELIMITER=""
 
           FIRST_APP=""
@@ -138,14 +138,13 @@ jobs:
             PACKAGE="apps/$APP/package.json"
             [ -f "$PACKAGE" ] || continue
 
-            VERSION=$(node -p "JSON.parse(require('fs').readFileSync('${PACKAGE}','utf8')).version||''")
+            VERSION="$(node -p "JSON.parse(require('fs').readFileSync('${PACKAGE}','utf8')).version||''")"
 
-            PRETTY="${PRETTY}${DELIMITER}\`${APP}@${VERSION}\`"
+            VERSIONS_MARKDOWN="${VERSIONS_MARKDOWN}${DELIMITER}\`${APP}@${VERSION}\`"
             DELIMITER=", "
 
             COUNT=$((COUNT+1))
 
-            # 첫 번째 앱/버전만 저장
             if [ -z "$FIRST_APP" ]; then
               FIRST_APP="$APP"
               FIRST_VERSION="$VERSION"
@@ -156,111 +155,61 @@ jobs:
           if [ "$COUNT" -eq 1 ]; then
             TITLE_SHORT="\`${FIRST_APP}@${FIRST_VERSION}\`"
           else
-            REMAIN=$((COUNT-1))
+            REMAIN=$((COUNT - 1))
             TITLE_SHORT="\`${FIRST_APP}@${FIRST_VERSION}\` 외 ${REMAIN}개"
           fi
 
-          echo "pretty=$PRETTY" >> "$GITHUB_OUTPUT"
+          echo "pretty=$VERSIONS_MARKDOWN" >> "$GITHUB_OUTPUT"
           echo "title_short=$TITLE_SHORT" >> "$GITHUB_OUTPUT"
 
-
-      - name: Delete ALL RC tags for changed apps
-        if: steps.prep.outputs.rc_stripped == 'true'
+      - name: Create PR to main & dev
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ steps.prep.outputs.head }}
+          TITLE_SHORT: ${{ steps.ver.outputs.title_short }}
+          VERSIONS_PRETTY: ${{ steps.ver.outputs.pretty }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          git fetch --tags --force --prune origin
-          CHANGED_APPS="${{ steps.prep.outputs.changed_apps }}"
-          [ -n "$CHANGED_APPS" ] || exit 0
-          for APP in $CHANGED_APPS; do
-            TAGS=$(git ls-remote --tags origin "${APP}@*-rc.*" "${APP}@v*-rc.*" \
-              | awk '{print $2}' | sed 's@^refs/tags/@@')
-            [ -n "$TAGS" ] || continue
-            echo "Found RC tags for $APP:"
-            printf '  %s\n' $TAGS
-            for T in $TAGS; do
-              ENC=$(printf '%s' "$T" | jq -sRr @uri)  # URL-encode '@', '.'
-              echo "Deleting: $T"
-              gh api -X DELETE "repos/${REPO}/git/refs/tags/${ENC}" || {
-                echo "API delete failed for $T, fallback to git push…"
-                git push origin ":refs/tags/$T"
-              }
-            done
-          done
-          echo "Remaining RC tags (should be empty):"
-          for APP in $CHANGED_APPS; do
-            git ls-remote --tags origin "${APP}@*-rc.*" "${APP}@v*-rc.*" | awk '{print $2}' | sed 's@^refs/tags/@@' || true
-          done
 
-      - name: Open/ensure PR to main
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-      - name: Open/ensure PR to main
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          HEAD="${{ steps.prep.outputs.head }}"
-          git fetch origin main "$HEAD"
-          if git diff --quiet origin/main origin/"$HEAD"; then
-            echo "No diff between $HEAD and main; skipping PR."
-            exit 0
-          fi
-          if gh pr list --base main --head "$HEAD" --json number -q '.[0].number' | grep -q '^[0-9]\+$'; then
-            echo "PR already exists for head=$HEAD -> main; skipping create."
-            exit 0
-          fi
+          # 공용 함수: base 브랜치 하나에 대해 PR 생성
+          create_pr() {
+            local BASE_BRANCH="$1"
+            local TITLE_PREFIX="$2"
 
-          # 제목: 첫 앱 + 나머지 개수
-          printf -v TITLE '🚀 Release: %s' '${{ steps.ver.outputs.title_short }}'
-          # 본문: 전체 앱 목록
-          printf -v BODY  '🚀 Release: %s' '${{ steps.ver.outputs.pretty }}'
+            # base, head 둘 다 fetch
+            git fetch origin "$BASE_BRANCH" "$HEAD_REF"
 
-          gh pr create \
-            --repo "${{ github.repository }}" \
-            --base main \
-            --head "$HEAD" \
-            --title "$TITLE" \
-            --body  "$BODY"
+            # diff 없으면 PR 생성 안 함
+            if git diff --quiet "origin/$BASE_BRANCH" "origin/$HEAD_REF"; then
+              echo "No diff between $HEAD_REF and $BASE_BRANCH; skipping PR."
+              return
+            fi
 
+            # 같은 head/base 조합 PR 이미 있으면 생성 안 함
+            if gh pr list --repo "$REPO" --base "$BASE_BRANCH" --head "$HEAD_REF" \
+              --json number -q '.[0].number' | grep -q '^[0-9]\+$'; then
+              echo "PR already exists for head=$HEAD_REF -> $BASE_BRANCH; skipping create."
+              return
+            fi
 
-      - name: Open/ensure PR to dev
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-      - name: Open/ensure PR to dev
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          HEAD="${{ steps.prep.outputs.head }}"
-          git fetch origin dev "$HEAD"
-          if git diff --quiet origin/dev origin/"$HEAD"; then
-            echo "No diff between $HEAD and dev; skipping PR."
-            exit 0
-          fi
-          if gh pr list --base dev --head "$HEAD" --json number -q '.[0].number' | grep -q '.[0-9]\+$'; then
-            echo "PR already exists for head=$HEAD -> dev; skipping create."
-            exit 0
-          fi
+            local TITLE BODY
+            printf -v TITLE '%s %s' "$TITLE_PREFIX" "$TITLE_SHORT"
+            printf -v BODY  '%s %s' "$TITLE_PREFIX" "$VERSIONS_PRETTY"
 
-          # 제목: 첫 앱 + 나머지 개수
-          printf -v TITLE '🔀 Staging -> Dev: %s' '${{ steps.ver.outputs.title_short }}'
-          # 본문: 전체 앱 목록
-          printf -v BODY  '🔀 Staging -> Dev: %s' '${{ steps.ver.outputs.pretty }}'
+            echo "Creating PR: $TITLE"
 
-          gh pr create \
-            --repo "${{ github.repository }}" \
-            --base dev \
-            --head "$HEAD" \
-            --title "$TITLE" \
-            --body  "$BODY"
+            gh pr create \
+              --repo "$REPO" \
+              --base "$BASE_BRANCH" \
+              --head "$HEAD_REF" \
+              --title "$TITLE" \
+              --body  "$BODY"
+          }
 
+          # main용
+          create_pr "main" "🚀 Release:"
+
+          # dev용
+          create_pr "dev" "🔀 Staging -> Dev:"
