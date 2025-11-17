@@ -129,32 +129,40 @@ jobs:
           PRETTY=""
           DELIMITER=""
 
-          # 전체 목록은 기존처럼 app@version으로 생성
+          FIRST_APP=""
+          FIRST_VERSION=""
+          COUNT=0
+
+          # 전체 목록 생성 + 첫 앱/버전 저장
           for APP in $CHANGED_APPS; do
             PACKAGE="apps/$APP/package.json"
             [ -f "$PACKAGE" ] || continue
+
             VERSION=$(node -p "JSON.parse(require('fs').readFileSync('${PACKAGE}','utf8')).version||''")
+
             PRETTY="${PRETTY}${DELIMITER}\`${APP}@${VERSION}\`"
             DELIMITER=", "
-          done
 
-          # 제목용: 첫 앱 이름 + 나머지 개수
-          FIRST_APP="${CHANGED_APPS%% *}"  # 첫 번째 단어
-          COUNT=0
-          for _ in $CHANGED_APPS; do
             COUNT=$((COUNT+1))
+
+            # 첫 번째 앱/버전만 저장
+            if [ -z "$FIRST_APP" ]; then
+              FIRST_APP="$APP"
+              FIRST_VERSION="$VERSION"
+            fi
           done
 
+          # 제목용: 첫 앱 + 버전 + 나머지 개수
           if [ "$COUNT" -eq 1 ]; then
-            TITLE_SHORT="$FIRST_APP"
+            TITLE_SHORT="\`${FIRST_APP}@${FIRST_VERSION}\`"
           else
             REMAIN=$((COUNT-1))
-            # 예: "neubie-go 외 2개"
-            TITLE_SHORT=\`$FIRST_APP@$FIRST_VERSION\` 외 ${REMAIN}개
+            TITLE_SHORT="\`${FIRST_APP}@${FIRST_VERSION}\` 외 ${REMAIN}개"
           fi
 
           echo "pretty=$PRETTY" >> "$GITHUB_OUTPUT"
           echo "title_short=$TITLE_SHORT" >> "$GITHUB_OUTPUT"
+
 
       - name: Delete ALL RC tags for changed apps
         if: steps.prep.outputs.rc_stripped == 'true'
