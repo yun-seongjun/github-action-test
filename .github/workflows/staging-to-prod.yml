@@ -18,14 +18,15 @@ jobs:
       - name: Checkout staging
         uses: actions/checkout@v4
         with:
+          # 항상 staging 브랜치 기준으로 작업
           ref: staging
           fetch-depth: 0
-          fetch-tags: true
           token: ${{ github.token }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
+          # package.json version 읽기용 node
           node-version: 22.17.1
 
       - name: Prepare head branch
@@ -38,8 +39,7 @@ jobs:
           HEAD_REF="$BASE_BRANCH"
           CHANGED_APPS=""
 
-          # 제목, 본문 구성용 변수
-          VERSIONS_MARKDOWN=""
+          VERSIONS_LIST=""
           DELIMITER=""
           FIRST_APP=""
           FIRST_VERSION=""
@@ -47,8 +47,8 @@ jobs:
 
           # package.json 에서 version 읽기
           get_version() {
-            local pkg="$1"
-            node -p "try{JSON.parse(require('fs').readFileSync('${pkg}','utf8')).version||''}catch(e){''}"
+            local package="$1"
+            node -p "try{JSON.parse(require('fs').readFileSync('${package}','utf8')).version||''}catch(e){''}"
           }
 
           # x.y.z-rc.n -> x.y.z 로 변환 (매치 안 되면 빈 문자열)
@@ -57,102 +57,109 @@ jobs:
             printf '%s' "$v" | sed -nE 's/^([0-9]+)\.([0-9]+)\.([0-9]+)-rc\.[0-9]+$/\1.\2.\3/p'
           }
 
-          # package.json 에서 실제로 -rc.N 제거
+          # 모든 대상 앱에 대해 RC → stable 변환 수행
           for APP in ${{ env.APPS }}; do
             PACKAGE="apps/$APP/package.json"
             [ -f "$PACKAGE" ] || continue
 
-            CURRENT="$(get_version "$PACKAGE")"
-            [ -n "$CURRENT" ] || continue
+            CURRENT_VERSION="$(get_version "$PACKAGE")"
+            [ -n "$CURRENT_VERSION" ] || continue
 
-            NEW="$(strip_rc "$CURRENT")"
+            NEW="$(strip_rc "$CURRENT_VERSION")"
 
-            if [ -n "$NEW" ] && [ "$NEW" != "$CURRENT" ]; then
+            if [ -n "$NEW" ] && [ "$NEW" != "$CURRENT_VERSION" ]; then
+              # package.json 에서 버전 문자열 업데이트
               node -e "
                 const fs=require('fs'); const p='${PACKAGE}';
                 const pkg=JSON.parse(fs.readFileSync(p,'utf8'));
                 pkg.version='${NEW}';
                 fs.writeFileSync(p, JSON.stringify(pkg, null, 2)+'\n');
               "
-              echo "write: $APP $CURRENT -> $NEW"
+              echo "write: $APP $CURRENT_VERSION -> $NEW"
 
+              # 변경된 앱 목록에 추가
               CHANGED_APPS="$CHANGED_APPS $APP"
 
-              # 제목, 본문용 데이터 쌓기 (RC → stable 된 앱만)
+              # PR 제목/본문 정보 쌓기 (RC → stable 된 앱만 기준)
               if [ -z "$FIRST_APP" ]; then
                 FIRST_APP="$APP"
                 FIRST_VERSION="$NEW"
               fi
 
-              if [ -z "$VERSIONS_MARKDOWN" ]; then
-                VERSIONS_MARKDOWN="\`${APP}@${NEW}\`"
+              if [ -z "$VERSIONS_LIST" ]; then
+                VERSIONS_LIST="\`${APP}@${NEW}\`"
               else
-                VERSIONS_MARKDOWN="${VERSIONS_MARKDOWN}, \`${APP}@${NEW}\`"
+                VERSIONS_LIST="${VERSIONS_LIST}, \`${APP}@${NEW}\`"
               fi
-
               COUNT=$((COUNT+1))
             else
-              echo "keep:  $APP $CURRENT"
+              echo "keep:  $APP $CURRENT_VERSION"
             fi
           done
 
-          # 변경이 있으면 release/rc-to-stable 브랜치 생성/업데이트
+          # version 변경이 실제로 발생한 경우 별도 release 브랜치 생성/업데이트
           if [ -n "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
+            # release/rc-to-stable 브랜치 새로 만들거나 기존 브랜치로 전환
             git switch -c release/rc-to-stable 2>/dev/null || git switch release/rc-to-stable
             git config user.name  "GitHub Actions"
             git config user.email "github-actions@github.com"
+
             git add apps/*/package.json
             git commit -m "release: RC to stable"
+
+            # HEAD 를 release/rc-to-stable 로 강제 푸시
             git push --force-with-lease origin HEAD:release/rc-to-stable
             HEAD_REF="release/rc-to-stable"
           fi
 
-          # 공백 정리
+          # 앱 이름 목록 공백 정리
           CHANGED_APPS="$(echo "$CHANGED_APPS" | xargs || true)"
 
+          # 다음 step 들에서 사용할 output
           echo "head=$HEAD_REF" >> "$GITHUB_OUTPUT"
           echo "changed_apps=$CHANGED_APPS" >> "$GITHUB_OUTPUT"
 
-          # pretty / title_short 출력
-          if [ -z "$CHANGED_APPS" ]; then
-            echo "pretty=(no app versions found)" >> "$GITHUB_OUTPUT"
-            echo "title_short=(no app versions found)" >> "$GITHUB_OUTPUT"
-          else
+          # 변경된 앱이 있는 경우에만 제목/본문용 문자열 출력
+          if [ "$COUNT" -gt 0 ]; then
             if [ "$COUNT" -eq 1 ]; then
               TITLE_SHORT="\`${FIRST_APP}@${FIRST_VERSION}\`"
             else
               REMAIN=$((COUNT - 1))
               TITLE_SHORT="\`${FIRST_APP}@${FIRST_VERSION}\` 외 ${REMAIN}개"
             fi
-
-            echo "pretty=$VERSIONS_MARKDOWN" >> "$GITHUB_OUTPUT"
+            echo "versions_list=$VERSIONS_LIST" >> "$GITHUB_OUTPUT"
             echo "title_short=$TITLE_SHORT" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create PR to main & dev
+        if: steps.prep.outputs.changed_apps != ''
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ steps.prep.outputs.head }}
           TITLE_SHORT: ${{ steps.prep.outputs.title_short }}
-          VERSIONS_PRETTY: ${{ steps.prep.outputs.pretty }}
+          VERSIONS_LIST: ${{ steps.prep.outputs.versions_list }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
+          # 공통 PR 생성 함수 (1.base 브랜치, 2.타이틀 구분)
           create_pr() {
             local BASE_BRANCH="$1"
             local TITLE_PREFIX="$2"
 
             echo "=== base=$BASE_BRANCH, head=$HEAD_REF ==="
 
+            # base / head 최신 내용 가져오기
             git fetch origin "$BASE_BRANCH" "$HEAD_REF"
 
+            # diff 없으면 PR 생성 안함
             if git diff --quiet "origin/$BASE_BRANCH" "origin/$HEAD_REF"; then
               echo "No diff between $HEAD_REF and $BASE_BRANCH; skipping PR."
               return
             fi
 
+            # 동일한 base/head 조합의 PR 이 이미 있으면 새로 만들지 않음
             if gh pr list --repo "$REPO" --base "$BASE_BRANCH" --head "$HEAD_REF" \
               --json number -q '.[0].number' | grep -q '^[0-9]\+$'; then
               echo "PR already exists for head=$HEAD_REF -> $BASE_BRANCH; skipping create."
@@ -161,9 +168,7 @@ jobs:
 
             local TITLE BODY
             printf -v TITLE '%s %s' "$TITLE_PREFIX" "$TITLE_SHORT"
-            printf -v BODY  '%s %s' "$TITLE_PREFIX" "$VERSIONS_PRETTY"
-
-            echo "Creating PR: $TITLE"
+            printf -v BODY  '%s %s' "$TITLE_PREFIX" "$VERSIONS_LIST"
 
             gh pr create \
               --repo "$REPO" \
