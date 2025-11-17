@@ -113,44 +113,28 @@ jobs:
           APP_PATH="${{ env.APP_PATH }}"
           PACKAGE_JSON="${APP_PATH}/package.json"
 
-          # 0. dev, staging 최신 가져오기
-          git fetch origin dev || true
-          git fetch origin staging || true
+          # 0. staging 최신 가져오기
+          git fetch origin staging
 
           # 1. 이전 origin/staging 기준으로 현재 버전 읽기
-          #    (origin/staging 이 없으면 dev 기준으로 읽도록 fallback)
-          if git rev-parse --verify origin/staging >/dev/null 2>&1; then
-            echo "📦 Reading version from origin/staging"
-            git checkout -B __tmp_staging_version origin/staging
-          else
-            echo "⚠ origin/staging not found, fallback to origin/dev"
-            git checkout -B __tmp_staging_version origin/dev
-          fi
-
-          if [ ! -f "$PACKAGE_JSON" ]; then
-            echo "❌ package.json not found at $PACKAGE_JSON"
+          git checkout -B __tmp_staging_version origin/staging  || {
+            echo "❌ origin/staging not found. Cannot read RC version."
             exit 1
-          fi
+          }
 
           CURRENT_VERSION=$(node -p "require('./${PACKAGE_JSON}').version")
-          echo "Current version on staging: ${CURRENT_VERSION}"
 
-          # 2. base(-rc.N) 형태로 파싱 (예: 1.2.3 또는 1.2.3-rc.1)
-          if [[ "$CURRENT_VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)(-rc\.([0-9]+))?$ ]]; then
-            BASE_VERSION="${BASH_REMATCH[1]}"
-            RC_NUM="${BASH_REMATCH[3]}"
-          else
-            echo "version 형식이 잘못되었습니다."
-            exit 1
+          # 2. base(-rc.N) 형태로 파싱 후 rc버전 증가
+          BASE_VERSION="$CURRENT_VERSION"
+          RC_NUM=0
+
+          # "-rc." 가 붙어 있으면 rc 번호만 뽑고 base 잘라내기
+          if [[ "$CURRENT_VERSION" == *-rc.* ]]; then
+          BASE_VERSION="${CURRENT_VERSION%-rc.*}"   # "-rc.숫자" 앞부분
+          RC_NUM="${CURRENT_VERSION##*-rc.}"        # 마지막 "-rc." 이후 숫자
           fi
 
-          # 3. 다음 rc 번호 계산
-          if [ -z "${RC_NUM:-}" ]; then
-            NEXT_RC_NUM=1
-          else
-            NEXT_RC_NUM=$((RC_NUM+1))
-          fi
-
+          NEXT_RC_NUM=$((RC_NUM+1))
           NEW_VERSION="${BASE_VERSION}-rc.${NEXT_RC_NUM}"
 
           # 4. staging 기준으로 staging 브랜치 재생성
@@ -174,7 +158,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git add "$PACKAGE_JSON"
-          git commit -m "chore(${APP_PATH}): bump staging RC version to ${NEW_VERSION}" || echo "No changes to commit"
+          git commit -m "🚀 [${APP_PATH#apps/}] ${CURRENT_VERSION} → ${NEW_VERSION}" || echo "No changes to commit"
 
           # 6. 원격 staging 삭제 후, 새 staging 푸시
           git push origin :staging || true
