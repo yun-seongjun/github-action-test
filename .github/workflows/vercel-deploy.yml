@@ -13,6 +13,9 @@ on:
           - NEUBIE_ORDER
           - NEUBIE_ORDER_ADMIN
 
+permissions:
+  contents: write
+
 jobs:
   deploy:
     if: github.ref_name == 'main' || github.ref_name == 'staging'
@@ -99,21 +102,51 @@ jobs:
 #          jenkins_token: ${{ secrets.JENKINS_TOKEN }}
 
 
-      - name: Update staging RC version
+      - name: Update staging RC version in package.json
         if: success() && github.ref_name == 'staging'
         run: |
-          git fetch --tags
+          # 현재 브랜치(보통 staging) 기준
+          git fetch
 
-          LAST_RC_NUM=$(git tag --list 'staging-rc-*' | sed 's/staging-rc-//' | sort -n | tail -n1)
+          # 1) package.json 에서 현재 버전 읽기
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "Current version in package.json: ${CURRENT_VERSION}"
 
-          if [ -z "$LAST_RC_NUM" ]; then
-            NEXT_RC_NUM=1
+          # 2) 버전 패턴: base(-rc.N) 형태로 파싱
+          #    예) 1.2.3 또는 1.2.3-rc.1
+          if [[ "$CURRENT_VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)(-rc\.([0-9]+))?$ ]]; then
+            BASE_VERSION="${BASH_REMATCH[1]}"
+            RC_NUM="${BASH_REMATCH[3]}"
           else
-            NEXT_RC_NUM=$((LAST_RC_NUM+1))
+            echo "version 형식이 예상과 다릅니다."
+            exit 1
           fi
 
-          NEW_TAG="staging-rc-${NEXT_RC_NUM}"
-          echo "Create new staging RC tag: ${NEW_TAG}"
+          # 3) 다음 rc 번호 계산
+          if [ -z "$RC_NUM" ]; then
+            NEXT_RC_NUM=1
+          else
+            NEXT_RC_NUM=$((RC_NUM+1))
+          fi
 
-          git tag "${NEW_TAG}"
-          git push origin "${NEW_TAG}"
+          NEW_VERSION="${BASE_VERSION}-rc.${NEXT_RC_NUM}"
+          echo "New RC version: ${NEW_VERSION}"
+
+          # 4) package.json 에 NEW_VERSION 반영
+          node - <<EOF
+          const fs = require('fs');
+          const pkg = require('./package.json');
+          pkg.version = "${NEW_VERSION}";
+          fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
+          EOF
+
+          # 5) 변경사항 커밋 & 푸시
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git status
+
+          git add package.json
+          git commit -m "chore: bump staging RC version to ${NEW_VERSION}" || echo "No changes to commit"
+
+          git push origin "${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
