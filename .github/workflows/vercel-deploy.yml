@@ -105,7 +105,7 @@ jobs:
 #          jenkins_user: ${{ secrets.JENKINS_USER }}
 #          jenkins_token: ${{ secrets.JENKINS_TOKEN }}
 
-      - name: Update staging RC version in package.json
+      - name: Update staging RC version based on previous staging and recreate branch
         if: success() && github.ref_name == 'staging'
         run: |
           set -euo pipefail
@@ -113,19 +113,32 @@ jobs:
           APP_PATH="${{ env.APP_PATH }}"
           PACKAGE_JSON="${APP_PATH}/package.json"
 
-          echo "🔧 Target app: $APP_PATH"
-          echo "🔧 Using package.json: $PACKAGE_JSON"
+          echo "🔧 Target app path: $APP_PATH"
+          echo "🔧 Target package.json: $PACKAGE_JSON"
+
+          # 0. dev, staging 최신 가져오기
+          git fetch origin dev || true
+          git fetch origin staging || true
+
+          # 1. 이전 origin/staging 기준으로 현재 버전 읽기
+          #    (origin/staging 이 없으면 dev 기준으로 읽도록 fallback)
+          if git rev-parse --verify origin/staging >/dev/null 2>&1; then
+            echo "📦 Reading version from origin/staging"
+            git checkout -B __tmp_staging_version origin/staging
+          else
+            echo "⚠ origin/staging not found, fallback to origin/dev"
+            git checkout -B __tmp_staging_version origin/dev
+          fi
 
           if [ ! -f "$PACKAGE_JSON" ]; then
-            echo "❌ package.json not found: $PACKAGE_JSON"
+            echo "❌ package.json not found at $PACKAGE_JSON"
             exit 1
           fi
 
-          # 1) 현재 커밋의 버전 읽기 (예: 1.24.0 또는 1.24.0-rc.1)
           CURRENT_VERSION=$(node -p "require('./${PACKAGE_JSON}').version")
-          echo "Current version: ${CURRENT_VERSION}"
+          echo "Current version on staging: ${CURRENT_VERSION}"
 
-          # 2) base(-rc.N) 패턴으로 파싱
+          # 2. base(-rc.N) 형태로 파싱 (예: 1.2.3 또는 1.2.3-rc.1)
           if [[ "$CURRENT_VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)(-rc\.([0-9]+))?$ ]]; then
             BASE_VERSION="${BASH_REMATCH[1]}"
             RC_NUM="${BASH_REMATCH[3]}"
@@ -134,17 +147,26 @@ jobs:
             exit 1
           fi
 
-          # 3) rc 번호 증가
-          if [ -z "$RC_NUM" ]; then
+          # 3. 다음 rc 번호 계산
+          if [ -z "${RC_NUM:-}" ]; then
             NEXT_RC_NUM=1
           else
             NEXT_RC_NUM=$((RC_NUM+1))
           fi
 
           NEW_VERSION="${BASE_VERSION}-rc.${NEXT_RC_NUM}"
-          echo "➡️ New version: ${NEW_VERSION}"
+          echo "➡️ New RC version to apply on new staging: ${NEW_VERSION}"
 
-          # 4) package.json 업데이트
+          # 4. dev 기준으로 staging 브랜치 재생성
+          echo "🔄 Recreate local staging from origin/dev"
+          git checkout -B staging origin/dev
+
+          # 5. 새 staging 작업 트리에서 package.json 에 NEW_VERSION 반영
+          if [ ! -f "$PACKAGE_JSON" ]; then
+            echo "❌ package.json not found at $PACKAGE_JSON on new staging"
+            exit 1
+          fi
+
           node - <<EOF
           const fs = require('fs');
           const path = '${PACKAGE_JSON}';
@@ -153,12 +175,15 @@ jobs:
           fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
           EOF
 
-          # 5) Git 커밋 & 푸시
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git add "$PACKAGE_JSON"
-          git commit -m "chore(${APP_PATH}): bump staging RC version to ${NEW_VERSION}" || echo "No changes"
+          git commit -m "chore(${APP_PATH}): bump staging RC version to ${NEW_VERSION}" || echo "No changes to commit"
 
-          # HEAD(현재 워크플로우 커밋 + 방금 커밋)를 staging 브랜치로 푸시
-          git push origin HEAD:staging
+          # 6. 원격 staging 삭제 후, 새 staging 푸시
+          echo "🗑 Delete remote staging (if exists)"
+          git push origin :staging || true
+
+          echo "⬆️ Push new staging branch"
+          git push -u origin staging
