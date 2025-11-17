@@ -27,6 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.ref }}
           fetch-depth: 0
 
       - name: Set App Name for slack notification
@@ -123,6 +124,12 @@ jobs:
         run: |
           set -euo pipefail
 
+          # 안전하게 staging 브랜치로 붙이기
+          git fetch origin
+          git checkout staging || git checkout -B staging origin/staging
+
+          echo "Current branch: $(git rev-parse --abbrev-ref HEAD)"
+
           APP_PATH="${{ env.APP_PATH }}"
           PACKAGE_JSON="${APP_PATH}/package.json"
 
@@ -134,7 +141,7 @@ jobs:
             exit 1
           fi
 
-          # 1) 해당 앱의 현재 버전 읽기 (예: 1.24.0 또는 1.24.0-rc.1)
+          # 1) 현재 버전 읽기 (예: 1.24.0 또는 1.24.0-rc.1)
           CURRENT_VERSION=$(node -p "require('./${PACKAGE_JSON}').version")
           echo "Current version: ${CURRENT_VERSION}"
 
@@ -166,11 +173,11 @@ jobs:
           fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
           EOF
 
-          # 5) Git 커밋 & 푸시
+          # 5) Git 커밋 & 푸시 (staging에만)
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git add "$PACKAGE_JSON"
           git commit -m "chore(${APP_PATH}): bump staging RC version to ${NEW_VERSION}" || echo "No changes"
 
-          git push -u origin "${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
+          git push origin staging
