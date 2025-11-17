@@ -135,13 +135,13 @@ jobs:
             NEW="${NEWBASE}-rc.1"
 
             # package.json version 갱신
-            node -e "
+            node - <<EOF
               const fs = require('fs');
-              const package_json = '$PACKAGE';
-              const package = JSON.parse(fs.readFileSync(package_json, 'utf8'));
-              package.version = '$NEW';
-              fs.writeFileSync(package_json, JSON.stringify(package, null, 2) + '\n');
-            "
+              const path = '${PACKAGE_JSON}';
+              const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+              pkg.version = '${NEW_VERSION}';
+              fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+            EOF
 
             git add "$PACKAGE"
             git commit -m "🚀 [$APP] ${BASE} → ${NEW}"
