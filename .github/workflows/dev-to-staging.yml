@@ -87,6 +87,7 @@ jobs:
               fi
             done
 
+            # "$TARGETAPPS" 한줄씩 문자열 쪼개기 (trim) > 중복 제거 > 다시 한줄로
             TARGETS="$(echo "$TARGETAPPS" | xargs -n1 | sort -u | xargs || true)"
           else
             TARGETS="$TARGET_APP"
@@ -105,7 +106,7 @@ jobs:
 
           APPS="${{ steps.diff.outputs.apps }}"
 
-          # 비어 있으면 종료
+          # $APPS 비어 있으면 종료
           if [ -z "$APPS" ]; then
             echo "empty apps" >> "$GITHUB_OUTPUT"
             exit 0
