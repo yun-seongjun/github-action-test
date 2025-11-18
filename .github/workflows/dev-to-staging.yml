@@ -82,7 +82,7 @@ jobs:
                 # "apps/" 제거
                 APP="${FILE#apps/}"
                 # 첫 "/" 이후 제거
-                APP="${app%%/*}"
+                APP="${APP%%/*}"
                 TARGETAPPS="$TARGETAPPS $APP"
               fi
             done
