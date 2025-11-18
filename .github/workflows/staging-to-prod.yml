@@ -48,8 +48,8 @@ jobs:
             CURRENT_VERSION="$(node -p "require('./${PACKAGE}').version")"
             [ -n "$CURRENT_VERSION" ] || continue
 
-            # x.y.z-rc.n -> x.y.z 로 변환 (매치 안 되면 빈 문자열)
-            NEW="$(printf '%s' "$CURRENT_VERSION" | sed -nE 's/^([0-9]+)\.([0-9]+)\.([0-9]+)-rc\.[0-9]+$/\1.\2.\3/p')"
+            # x.y.z-rc.n -> x.y.z 로 변환
+            NEW="${CURRENT_VERSION%-rc.*}"
 
             if [ -n "$NEW" ] && [ "$NEW" != "$CURRENT_VERSION" ]; then
               # package.json 에서 버전 문자열 업데이트
