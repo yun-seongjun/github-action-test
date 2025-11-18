@@ -105,7 +105,7 @@ jobs:
               TITLE_SHORT="\`${FIRST_APP}@${FIRST_VERSION}\`"
             else
               REMAIN=$((COUNT - 1))
-              TITLE_SHORT="\`${FIRST_APP}@${FIRST_VERSION}\` 외 ${REMAIN}개"
+              TITLE_SHORT="\`${FIRST_APP}@${FIRST_VERSION}\` +${REMAIN} others"
             fi
             echo "versions_list=$VERSIONS_LIST" >> "$GITHUB_OUTPUT"
             echo "title_short=$TITLE_SHORT" >> "$GITHUB_OUTPUT"
