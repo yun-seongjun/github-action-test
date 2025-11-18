@@ -40,27 +40,16 @@ jobs:
           FIRST_VERSION=""
           COUNT=0
 
-          # package.json 에서 version 가져오기
-          get_version() {
-            local package="$1"
-            node -p "try{JSON.parse(require('fs').readFileSync('${package}','utf8')).version||''}catch(e){''}"
-          }
-
-          # x.y.z-rc.n -> x.y.z 로 변환 (매치 안 되면 빈 문자열)
-          strip_rc() {
-            local v="$1"
-            printf '%s' "$v" | sed -nE 's/^([0-9]+)\.([0-9]+)\.([0-9]+)-rc\.[0-9]+$/\1.\2.\3/p'
-          }
-
           # 모든 대상 앱에 대해 RC → stable 변환 수행
           for APP in ${{ env.APPS }}; do
             PACKAGE="apps/$APP/package.json"
             [ -f "$PACKAGE" ] || continue
 
-            CURRENT_VERSION="$(get_version "$PACKAGE")"
+            CURRENT_VERSION=$(node -p "require('./${PACKAGE}').version")
             [ -n "$CURRENT_VERSION" ] || continue
 
-            NEW="$(strip_rc "$CURRENT_VERSION")"
+            # x.y.z-rc.n -> x.y.z 로 변환 (매치 안 되면 빈 문자열)
+            NEW="$(printf '%s' "$CURRENT_VERSION" | sed -nE 's/^([0-9]+)\.([0-9]+)\.([0-9]+)-rc\.[0-9]+$/\1.\2.\3/p')"
 
             if [ -n "$NEW" ] && [ "$NEW" != "$CURRENT_VERSION" ]; then
               # package.json 에서 버전 문자열 업데이트
