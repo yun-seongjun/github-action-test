@@ -45,7 +45,7 @@ jobs:
             PACKAGE="apps/$APP/package.json"
             [ -f "$PACKAGE" ] || continue
 
-            CURRENT_VERSION=$(node -p "require('./${PACKAGE}').version")
+            CURRENT_VERSION="$(node -p "require('./${PACKAGE}').version")"
             [ -n "$CURRENT_VERSION" ] || continue
 
             # x.y.z-rc.n -> x.y.z 로 변환 (매치 안 되면 빈 문자열)
@@ -80,7 +80,7 @@ jobs:
             fi
           done
 
-          # 실제로 변경이 있는 경우에만 staging 에 커밋 + 원격 staging 재생성
+          # package.json에 변동이 있을경우에만 staging에 커밋 + 원격 staging 재생성
           if [ -n "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
             git config user.name "GitHub Actions"
             git config user.email "github-actions@github.com"
@@ -92,7 +92,7 @@ jobs:
             git push -u origin staging
           fi
 
-          # 앱 이름 목록 공백 정리
+          # 앱 이름 목록 공백 정리 (trim)
           CHANGED_APPS="$(echo "$CHANGED_APPS" | xargs || true)"
 
           # 다음 step 에서 쓸 output
@@ -115,7 +115,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_REF: ${{ steps.prep.outputs.head }}            # 항상 staging
+          HEAD_REF: ${{ steps.prep.outputs.head }}
           TITLE_SHORT: ${{ steps.prep.outputs.title_short }}
           VERSIONS_LIST: ${{ steps.prep.outputs.versions_list }}
           REPO: ${{ github.repository }}
@@ -128,29 +128,11 @@ jobs:
 
             git fetch origin "$BASE_BRANCH" "$HEAD_REF"
 
-            # diff 없으면 PR 생성 안 함
-            if git diff --quiet "origin/$BASE_BRANCH" "origin/$HEAD_REF"; then
-              echo "No diff between $HEAD_REF and $BASE_BRANCH; skipping PR."
-              return
-            fi
-
-            # 같은 base/head 조합의 PR이 이미 있으면 새로 만들지 않음
-            if gh pr list --repo "$REPO" --base "$BASE_BRANCH" --head "$HEAD_REF" \
-              --json number -q '.[0].number' | grep -q '^[0-9]\+$'; then
-              echo "PR already exists for head=$HEAD_REF -> $BASE_BRANCH; skipping create."
-              return
-            fi
-
             local TITLE BODY
             printf -v TITLE '%s %s' "$TITLE_PREFIX" "$TITLE_SHORT"
             printf -v BODY  '%s %s' "$TITLE_PREFIX" "$VERSIONS_LIST"
 
-            gh pr create \
-              --repo "$REPO" \
-              --base "$BASE_BRANCH" \
-              --head "$HEAD_REF" \
-              --title "$TITLE" \
-              --body  "$BODY"
+            gh pr create --repo "$REPO" --base "$BASE_BRANCH" --head "$HEAD_REF" --title "$TITLE" --body  "$BODY"
           }
 
           create_pr "main" "🚀 Release:"
