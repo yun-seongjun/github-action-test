@@ -37,67 +37,67 @@ jobs:
             echo "APP_PATH=apps/neubie-order-admin" >> $GITHUB_ENV
           fi
 
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
-
-      - name: Pull Vercel Environment Information
-        run: |
-          if [ "${{ github.ref_name }}" == "main" ]; then
-            vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
-          else
-            vercel pull --yes --environment=preview --git-branch=staging --token=${{ secrets.VERCEL_TOKEN }}
-          fi
-
-
-      - name: Build Project Artifacts
-        run: |
-          if [ "${{ github.ref_name }}" == "main" ]; then
-            vercel build --prod
-          else
-            vercel build
-          fi
-
-      - name: Deploy Project Artifacts to Vercel
-        run: |
-          if [ "${{ github.ref_name }}" == "main" ]; then
-            vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
-          else
-            vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
-          fi
-
-      - name: Slack Notification
-        if: always()
-        uses: rtCamp/action-slack-notify@v2
-        env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-          SLACK_COLOR: ${{ job.status == 'success' && 'good' || job.status == 'failure' && 'danger' || 'warning' }}
-          SLACK_CUSTOM_PAYLOAD: |
-            {
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*🚀 프론트엔드 배포 완료 알림*"
-                  }
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "앱: *${{ env.APP_NAME }}*\n배포 환경: *${{ github.ref_name }}*\n배포 결과: *${{ job.status == 'success' && '성공' || '실패' }}*"
-                  }
-                }
-              ]
-            }
-
-      - name: Trigger QA Test Workflow
-        if: success() && github.ref_name == 'staging'
-        uses: ./.github/actions/trigger-qa-test
-        with:
-          jenkins_url: ${{ secrets.JENKINS_URL }}
-          jenkins_user: ${{ secrets.JENKINS_USER }}
-          jenkins_token: ${{ secrets.JENKINS_TOKEN }}
+#      - name: Install Vercel CLI
+#        run: npm install --global vercel@latest
+#
+#      - name: Pull Vercel Environment Information
+#        run: |
+#          if [ "${{ github.ref_name }}" == "main" ]; then
+#            vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+#          else
+#            vercel pull --yes --environment=preview --git-branch=staging --token=${{ secrets.VERCEL_TOKEN }}
+#          fi
+#
+#
+#      - name: Build Project Artifacts
+#        run: |
+#          if [ "${{ github.ref_name }}" == "main" ]; then
+#            vercel build --prod
+#          else
+#            vercel build
+#          fi
+#
+#      - name: Deploy Project Artifacts to Vercel
+#        run: |
+#          if [ "${{ github.ref_name }}" == "main" ]; then
+#            vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+#          else
+#            vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
+#          fi
+#
+#      - name: Slack Notification
+#        if: always()
+#        uses: rtCamp/action-slack-notify@v2
+#        env:
+#          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+#          SLACK_COLOR: ${{ job.status == 'success' && 'good' || job.status == 'failure' && 'danger' || 'warning' }}
+#          SLACK_CUSTOM_PAYLOAD: |
+#            {
+#              "blocks": [
+#                {
+#                  "type": "section",
+#                  "text": {
+#                    "type": "mrkdwn",
+#                    "text": "*🚀 프론트엔드 배포 완료 알림*"
+#                  }
+#                },
+#                {
+#                  "type": "section",
+#                  "text": {
+#                    "type": "mrkdwn",
+#                    "text": "앱: *${{ env.APP_NAME }}*\n배포 환경: *${{ github.ref_name }}*\n배포 결과: *${{ job.status == 'success' && '성공' || '실패' }}*"
+#                  }
+#                }
+#              ]
+#            }
+#
+#      - name: Trigger QA Test Workflow
+#        if: success() && github.ref_name == 'staging'
+#        uses: ./.github/actions/trigger-qa-test
+#        with:
+#          jenkins_url: ${{ secrets.JENKINS_URL }}
+#          jenkins_user: ${{ secrets.JENKINS_USER }}
+#          jenkins_token: ${{ secrets.JENKINS_TOKEN }}
 
       - name: Update staging RC version based on previous staging and recreate branch
         if: success() && github.ref_name == 'staging'
