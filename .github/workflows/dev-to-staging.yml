@@ -62,7 +62,7 @@ jobs:
         id: diff
         shell: bash
         env:
-          INPUT_APPS: ${{ inputs.apps }}
+          TARGET_APP: ${{ inputs.apps }}
         run: |
           set -euo pipefail
 
@@ -71,22 +71,20 @@ jobs:
           # main 최신 가져오기 (dev와 변경점 체크위해)
           git fetch origin main >/dev/null 2>&1 || true
 
-          TARGETAPPS="$INPUT_APPS"
-
-          if [ "$INPUT_APPS" = "auto" ]; then
-          # 경로가 "apps/" 로 시작하면서 "/" 기준 2번째 값가져오기
-          TARGETAPPS=$(git diff --name-only origin/main..HEAD 2>/dev/null \
-          | awk -F/ '/^apps\//{print $2}' || true)
-          fi
-
+          TARGETAPPS="$TARGET_APP"
           TARGETS=""
 
-          for app in $CATALOG; do
-          # TARGETAPPS에 app 포함여부 확인
-          if printf '%s\n' $TARGETAPPS | grep -qx -- "$app"; then
-          # TARGETS가 빈값이면 "app", 비어있지 않으면 "기존값 + 공백 + app"
-          TARGETS="${TARGETS:+$TARGETS }$app"
+          if [ "$TARGET_APP" = "auto" ]; then
+            # 변경된 파일들 중, 경로가 "apps/" 로 시작하면서 "/" 기준 2번째 값가져오기
+            TARGETAPPS=$(git diff --name-only origin/main..HEAD 2>/dev/null | awk -F/ '/^apps\//{print $2}' || true)
           fi
+
+          for app in $CATALOG; do
+            # TARGETAPPS에 app 포함여부 확인
+            if printf '%s\n' $TARGETAPPS | grep -qx -- "$app"; then
+              # TARGETS가 빈값이면 "app", 비어있지 않으면 "기존값 + 공백 + app"
+              TARGETS="${TARGETS:+$TARGETS }$app"
+            fi
           done
 
           echo "apps=$TARGETS"
@@ -129,10 +127,10 @@ jobs:
 
             # 현재 버전 base version 가져오기
             BASE=$(node -p "require('./$PACKAGE').version")
-            NEWBASE=$(new_version "$BASE" "$NEW_LEVEL")
+            NEW_BASE=$(new_version "$BASE" "$NEW_LEVEL")
 
             # dev to staging은 버전당 한 번만이라고 가정 → 항상 rc.1
-            NEW="${NEWBASE}-rc.1"
+            NEW="${NEW_BASE}-rc.1"
 
             # package.json version 갱신
             node -e "

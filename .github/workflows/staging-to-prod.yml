@@ -114,7 +114,7 @@ jobs:
         if: steps.prep.outputs.changed_apps != ''
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           HEAD_REF: ${{ steps.prep.outputs.head }}
           TITLE_SHORT: ${{ steps.prep.outputs.title_short }}
           VERSIONS_LIST: ${{ steps.prep.outputs.versions_list }}
