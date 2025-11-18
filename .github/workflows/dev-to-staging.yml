@@ -47,7 +47,6 @@ jobs:
       - name: Recreate clean staging branch from dev
         shell: bash
         run: |
-          # 에러발생, 선언되지않은 변수사용, 파이프 중간의 오류 발생시 멈춤 (exit code 없어도 멈춤)
           set -euo pipefail
 
           # origin/dev 최신 가져오기
