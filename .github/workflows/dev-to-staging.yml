@@ -56,8 +56,7 @@ jobs:
           git checkout -B staging origin/dev
 
           # 원격 staging 브랜치 삭제
-          # :staging > 빈값을 staging으로 (빈 refspec은 대상 ref 삭제)
-          git push origin :staging
+          git push origin --delete staging
 
       - name: Resolve target apps from changes
         id: diff
