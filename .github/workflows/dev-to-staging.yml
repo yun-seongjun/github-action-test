@@ -52,7 +52,7 @@ jobs:
           # origin/dev 최신 가져오기
           git fetch origin dev
 
-          # 로컬 staging 브랜치를 origin/dev 기준으로 강제로 맞추기
+          # 로컬 staging 브랜치를 origin/dev 기준으로 맞추기
           git checkout -B staging origin/dev
 
           # 원격 staging 브랜치 삭제
@@ -71,21 +71,26 @@ jobs:
           # main 최신 가져오기 (dev와 변경점 체크위해)
           git fetch origin main >/dev/null 2>&1 || true
 
-          TARGETAPPS="$TARGET_APP"
           TARGETS=""
 
-          if [ "$TARGET_APP" = "auto" ]; then
-            # 변경된 파일들 중, 경로가 "apps/" 로 시작하면서 "/" 기준 2번째 값가져오기
-            TARGETAPPS=$(git diff --name-only origin/main..HEAD 2>/dev/null | awk -F/ '/^apps\//{print $2}' || true)
-          fi
+          if [[ "$TARGET_APP" == "auto" ]]; then
+            TARGETAPPS=""
+            CHANGED_FILES=$(git diff --name-only origin/main..HEAD 2>/dev/null || true)
 
-          for app in $CATALOG; do
-            # TARGETAPPS에 app 포함여부 확인
-            if printf '%s\n' $TARGETAPPS | grep -qx -- "$app"; then
-              # TARGETS가 빈값이면 "app", 비어있지 않으면 "기존값 + 공백 + app"
-              TARGETS="${TARGETS:+$TARGETS }$app"
-            fi
-          done
+            for FILE in $CHANGED_FILES; do
+              if [[ "$FILE" == apps/*/* ]]; then
+                # "apps/" 제거
+                APP="${FILE#apps/}"
+                # 첫 "/" 이후 제거
+                APP="${app%%/*}"
+                TARGETAPPS="$TARGETAPPS $APP"
+              fi
+            done
+
+            TARGETS="$(echo "$TARGETAPPS" | xargs -n1 | sort -u | xargs || true)"
+          else
+            TARGETS="$TARGET_APP"
+          fi
 
           echo "apps=$TARGETS"
           echo "apps=$TARGETS" >> "$GITHUB_OUTPUT"
@@ -111,7 +116,6 @@ jobs:
             local VERSION="$1" LEVEL="$2" MAJOR MINOR PATCH
             # "."으로 버전 분리
             IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-            # default 설정
             MAJOR=${MAJOR:-0}; MINOR=${MINOR:-0}; PATCH=${PATCH:-0}
             case "$LEVEL" in
               major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
