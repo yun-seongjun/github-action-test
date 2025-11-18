@@ -63,6 +63,7 @@ jobs:
 
               CHANGED_APPS="$CHANGED_APPS $APP"
 
+              # PR 제목을 위해 첫번쨰 app
               if [ -z "$FIRST_APP" ]; then
                 FIRST_APP="$APP"
                 FIRST_VERSION="$NEW"
