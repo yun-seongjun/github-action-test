@@ -132,13 +132,13 @@ jobs:
           git checkout -B staging origin/staging
 
           # package.json version 갱신
-          node - <<EOF
+          node -e "
             const fs = require('fs');
             const path = '${PACKAGE_JSON}';
-            const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
-            pkg.version = '${NEW_VERSION}';
-            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
-          EOF
+            const package = JSON.parse(fs.readFileSync(path, 'utf8'));
+            package.version = '${NEW_VERSION}';
+            fs.writeFileSync(path, JSON.stringify(package, null, 2) + '\n');
+            "
 
           git config user.name "GitHub Actions"
           git config user.email "github-actions@github.com"
