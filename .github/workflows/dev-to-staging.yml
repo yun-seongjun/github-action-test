@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       new_level:
-        description: "New version"
+        description: "버전"
         type: choice
         required: true
         default: minor
