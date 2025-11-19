@@ -3,8 +3,8 @@
 branch="$(git rev-parse --abbrev-ref HEAD)"
 
 # CI에서는 스킵
-if [ "$CI" != "true" ]; then
-  echo "!!!!!!!!!!!!!"
+if [ "$CI" = "true" ]; then
+  echo "🔄 [Husky] pre-push skipped in CI environment"
   exit 0
 fi
 
