@@ -102,18 +102,10 @@ jobs:
       - name: Bump staging RC version from previous staging and recreate branch
         # 지금까지 스탭이 성공이고, staging일 경우에만 실행
         if: success() && github.ref_name == 'staging'
+        env:
+          HUSKY: 0
         run: |
           set -euo pipefail
-
-          echo "$HUSKY"
-          echo "$HUSKY"
-          echo "$HUSKY"
-          echo "$HUSKY"
-          echo "$HUSKY"
-          echo "$HUSKY"
-          echo "$HUSKY"
-          echo "$HUSKY"
-          echo "$HUSKY"
 
           APP_PATH="${{ env.APP_PATH }}"
           PACKAGE_JSON="${APP_PATH}/package.json"
