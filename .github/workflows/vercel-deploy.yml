@@ -103,8 +103,6 @@ jobs:
         # 지금까지 스탭이 성공이고, staging일 경우에만 실행
         if: success() && github.ref_name == 'staging'
         # 이 스탭에서만 허스키 비활성화 (staging 브랜치명을 사용하므로..)
-        env:
-          HUSKY: 0
         run: |
           set -euo pipefail
 
