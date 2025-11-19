@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       app:
-        description: "Select app to be deployed"
+        description: "배포할 앱을 선택하세요"
         required: true
         default: "NEUBIE_GO"
         type: choice
@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set App Name for slack notification
+      - name: Resolve app name and path from workflow input
         run: |
           if [[ "${{ github.event.inputs.app }}" == "NEUBIE_GO" ]]; then
             echo "APP_NAME=뉴비고" >> $GITHUB_ENV
@@ -99,7 +99,8 @@ jobs:
 #          jenkins_user: ${{ secrets.JENKINS_USER }}
 #          jenkins_token: ${{ secrets.JENKINS_TOKEN }}
 
-      - name: Update staging RC version based on previous staging and recreate branch
+      - name: Bump staging RC version from previous staging and recreate branch
+        # 지금까지 스탭이 성공이고, staging일 경우에만 실행
         if: success() && github.ref_name == 'staging'
         run: |
           set -euo pipefail
@@ -107,9 +108,10 @@ jobs:
           APP_PATH="${{ env.APP_PATH }}"
           PACKAGE_JSON="${APP_PATH}/package.json"
 
-          # origin/staging 기준으로 로컬 임시 브랜치("__temp_staging") 생성 후 현재 버전 읽기
+          # origin/staging 기준으로 로컬 임시 브랜치("staging_version_base") 생성 후 현재 버전 읽기
           git fetch origin staging
-          git checkout -B __temp_staging origin/staging || {
+          git checkout -B staging_version_base origin/staging || {
+            # orgin/staging을 불러오지못하면 종료(rc버전을 찾을수 없기때문에)
             echo "❌ origin/staging not found. Cannot read RC version."
             exit 1
           }
@@ -121,8 +123,8 @@ jobs:
 
           # "-rc." 가 붙어 있으면 rc 번호와 base 잘라내기
           if [[ "$CURRENT_VERSION" == *-rc.* ]]; then
-            BASE_VERSION="${CURRENT_VERSION%-rc.*}" # "-rc.n" 앞부분
-            RC_NUMBER="${CURRENT_VERSION##*-rc.}" # 마지막 "-rc." 이후 숫자
+            BASE_VERSION="${CURRENT_VERSION%-rc.*}"
+            RC_NUMBER="${CURRENT_VERSION##*-rc.}"
           fi
 
           NEXT_RC_NUMBER=$((RC_NUMBER+1))
@@ -131,7 +133,6 @@ jobs:
           # staging 기준으로 staging 브랜치 재생성 후 NEW_VERSION 반영
           git checkout -B staging origin/staging
 
-          # package.json version 갱신
           node -e "
             const fs = require('fs');
             const path = '${PACKAGE_JSON}';
