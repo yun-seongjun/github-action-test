@@ -105,6 +105,16 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "$HUSKY"
+          echo "$HUSKY"
+          echo "$HUSKY"
+          echo "$HUSKY"
+          echo "$HUSKY"
+          echo "$HUSKY"
+          echo "$HUSKY"
+          echo "$HUSKY"
+          echo "$HUSKY"
+
           APP_PATH="${{ env.APP_PATH }}"
           PACKAGE_JSON="${APP_PATH}/package.json"
 

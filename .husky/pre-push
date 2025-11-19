@@ -18,15 +18,6 @@ if [ "$branch" = "staging" ]; then
   echo "You can't push directly to staging branch"
   exit 1
 fi
-echo "$($branch)"
-echo "$($branch)"
-echo "$($branch)"
-echo "$($branch)"
-echo "$($branch)"
-echo "$($branch)"
-echo "$($branch)"
-echo "$($branch)"
-
 
 # husky 스크립트를 쉽게 제공해주는  _/husky.sh 스크립트를 실행합니다.
 . "$(dirname -- "$0")/_/husky.sh"
