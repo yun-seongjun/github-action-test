@@ -24,6 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Enable git hooks (husky)
+        run: git config core.hooksPath .husky
+
       - name: Resolve app name and path from workflow input
         run: |
           if [[ "${{ github.event.inputs.app }}" == "NEUBIE_GO" ]]; then
