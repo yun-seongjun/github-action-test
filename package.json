@@ -23,7 +23,8 @@
     "dep-graph": "nx dep-graph",
     "help": "nx help",
     "nx": "nx",
-    "workspace-generator": "nx workspace-generator"
+    "workspace-generator": "nx workspace-generator",
+    "prepare": "husky install && chmod +x .husky/pre-commit && chmod +x .husky/pre-push"
   },
   "private": true,
   "dependencies": {
@@ -123,11 +124,12 @@
     "stylus-loader": "^7.1.0",
     "ts-jest": "29.2.4",
     "ts-node": "10.9.1",
+    "husky": "^8.0.3",
     "typescript": "5.9.2",
     "url-loader": "^4.1.1",
     "webpack": "5.101.3",
     "webpack-cli": "^5.1.4",
     "webpack-merge": "^5.8.0"
   },
-  "packageManager": "yarn@4.2.2"
+  "packageManager": "yarn@1.22.22"
 }
