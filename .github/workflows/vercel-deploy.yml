@@ -123,7 +123,9 @@ jobs:
 
           # "-rc." 가 붙어 있으면 rc 번호와 base 잘라내기
           if [[ "$CURRENT_VERSION" == *-rc.* ]]; then
+            # ${변수%패턴} 은 뒤에서부터 매칭되는것 제거. %는 짧게 매칭 %%은 길게 매칭
             BASE_VERSION="${CURRENT_VERSION%-rc.*}"
+            # ${변수#패턴} 은 앞에서부터 패턴에 매칭되는 부분 제거. #은 짧게 매칭, ##은 길게 매칭
             RC_NUMBER="${CURRENT_VERSION##*-rc.}"
           fi
 

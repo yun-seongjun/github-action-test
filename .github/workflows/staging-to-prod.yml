@@ -95,7 +95,7 @@ jobs:
             git push -u origin staging
           fi
 
-          # 앱 이름 목록 공백 정리 (trim)
+          # xargs 한줄 공백 구분 문자열 변환
           CHANGED_APPS="$(echo "$CHANGED_APPS" | xargs)"
 
           echo "head=staging" >> "$GITHUB_OUTPUT"
@@ -126,8 +126,7 @@ jobs:
           set -euo pipefail
 
           create_pr() {
-            local BASE_BRANCH="$1"
-            local TITLE_PREFIX="$2"
+            local BASE_BRANCH="$1" TITLE_PREFIX="$2"
 
             git fetch origin "$BASE_BRANCH" "$HEAD_REF"
 
