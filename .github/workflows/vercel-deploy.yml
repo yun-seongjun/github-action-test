@@ -152,5 +152,5 @@ jobs:
           git commit -m "🚀 [${APP_PATH#apps/}] ${CURRENT_VERSION} → ${NEW_VERSION}" || echo "No changes to commit"
 
           # 원격 staging 삭제 후, 새 staging 푸시
-          git push origin :staging || true
+          git push origin --delete staging || true
           git push -u origin staging
