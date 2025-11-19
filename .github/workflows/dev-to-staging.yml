@@ -80,7 +80,7 @@ jobs:
               if [[ "$FILE" == apps/*/* ]]; then
                 # "apps/" 제거 (${변수#패턴} 은 앞에서부터 패턴에 매칭되는 부분 제거)
                 APP="${FILE#apps/}"
-                # 첫 "/" 이후 제거 (${변수%%패턴} 은 뒤에서부터 매칭되는것 제거)
+                # 첫 "/" 이후 제거 (${변수%패턴} 은 뒤에서부터 매칭되는것 제거)
                 APP="${APP%%/*}"
                 TARGETAPPS="$TARGETAPPS $APP"
               fi
@@ -134,7 +134,6 @@ jobs:
             # dev to staging은 버전당 한 번만이라고 가정 → 항상 rc.1
             NEW="${NEW_BASE}-rc.1"
 
-            # package.json version 갱신
             node -e "
               const fs = require('fs');
               const path = '$PACKAGE';

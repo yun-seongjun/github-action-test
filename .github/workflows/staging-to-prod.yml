@@ -27,7 +27,7 @@ jobs:
         with:
           node-version: 22.17.1
 
-      - name: Prepare staging (RC -> stable) and recreate remote staging
+      - name: Promote RC app versions to stable and update staging branch
         id: prep
         shell: bash
         run: |
@@ -52,7 +52,6 @@ jobs:
             NEW="${CURRENT_VERSION%-rc.*}"
 
             if [ -n "$NEW" ] && [ "$NEW" != "$CURRENT_VERSION" ]; then
-              # package.json 에서 버전 문자열 업데이트
               node -e "
                 const fs=require('fs'); const path='${PACKAGE}';
                 const package=JSON.parse(fs.readFileSync(path,'utf8'));
@@ -82,24 +81,27 @@ jobs:
           done
 
           # package.json에 변동이 있을경우에만 staging에 커밋 + 원격 staging 재생성
-          if [ -n "$(git status --porcelain apps/*/package.json 2>/dev/null)" ]; then
+          # -n > 빈 문자열이면 false, 아니면  true
+          # --porcelain > 파싱하기 좋은 포맷으로 출력
+          # apps/*/package.json 중에 git에 변경된게 있는지 확인
+          if [ -n "$(git status --porcelain apps/*/package.json)" ]; then
             git config user.name "GitHub Actions"
             git config user.email "github-actions@github.com"
 
             git add apps/*/package.json
             git commit -m "release: RC to stable"
 
-            git push origin :staging || true
+            git push origin :staging
             git push -u origin staging
           fi
 
           # 앱 이름 목록 공백 정리 (trim)
-          CHANGED_APPS="$(echo "$CHANGED_APPS" | xargs || true)"
+          CHANGED_APPS="$(echo "$CHANGED_APPS" | xargs)"
 
-          # 다음 step 에서 쓸 output
           echo "head=staging" >> "$GITHUB_OUTPUT"
           echo "changed_apps=$CHANGED_APPS" >> "$GITHUB_OUTPUT"
 
+          # -eq: "==", -ne: "!=", -gt: ">", -ge: ">=", -lt: "<", -le: "<="
           if [ "$COUNT" -gt 0 ]; then
             if [ "$COUNT" -eq 1 ]; then
               TITLE_SHORT="\`${FIRST_APP}@${FIRST_VERSION}\`"
@@ -130,8 +132,8 @@ jobs:
             git fetch origin "$BASE_BRANCH" "$HEAD_REF"
 
             local TITLE BODY
-            printf -v TITLE '%s %s' "$TITLE_PREFIX" "$TITLE_SHORT"
-            printf -v BODY  '%s %s' "$TITLE_PREFIX" "$VERSIONS_LIST"
+            TITLE="${TITLE_PREFIX} ${TITLE_SHORT}"
+            BODY="${TITLE_PREFIX} ${VERSIONS_LIST}"
 
             gh pr create --repo "$REPO" --base "$BASE_BRANCH" --head "$HEAD_REF" --title "$TITLE" --body  "$BODY"
           }
