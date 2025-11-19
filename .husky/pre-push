@@ -2,6 +2,12 @@
 # 현재 브렌치의 네임을 branch에 저장
 branch="$(git rev-parse --abbrev-ref HEAD)"
 
+echo "🔄 [Husky] pre-push skipped in CI environment"
+echo "🔄 [Husky] pre-push skipped in CI environment"
+echo "🔄 [Husky] pre-push skipped in CI environment"
+echo "🔄 [Husky] pre-push skipped in CI environment"
+
+
 # branch가 main 이라면 문구를 노출 시키며 종료
 if [ "$branch" = "main" ]; then
   echo "You can't push directly to main branch"
