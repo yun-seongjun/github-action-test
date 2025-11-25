@@ -7,7 +7,7 @@ ROOT="$(git rev-parse --show-toplevel)"
 
 # CI 환경에서 훅 스킵
 if [ "$CI" = "true" ]; then
-  echo "🔄 [Husky] pre-push skipped in CI environment"
+  echo "🔄 [Husky] pre-commit skipped in CI environment"
   exit 0
 fi
 
@@ -29,7 +29,7 @@ fi
 
 if [ "$branch" != "main" ] && [ "$branch" != "dev" ] && [ "$branch" != "staging" ]; then
   echo "👀  Start Inspection"
-  #chmod +x $ROOT/ts-staged.sh || exit 1
-  #bash "$ROOT/ts-staged.sh" || exit 1
+  chmod +x $ROOT/ts-staged.sh || exit 1
+  bash "$ROOT/ts-staged.sh" || exit 1
   echo "👏  End Inspection"
 fi
