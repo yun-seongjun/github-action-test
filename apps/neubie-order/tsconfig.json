@@ -1,17 +1,39 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "jsx": "react-jsx",
-    "allowJs": false,
-    "esModuleInterop": false,
-    "allowSyntheticDefaultImports": true,
-    "strict": true
-  },
-  "files": [],
-  "include": [],
-  "references": [
-    {
-      "path": "./tsconfig.app.json"
+    "target": "es6",
+    "incremental": true,
+    "paths": {
+      "@/*": ["./apps/neubie-order/src/*"],
+      "@/icons/*": ["./apps/neubie-order/public/icons/*"],
+      "@/rawIcons/*": ["./apps/neubie-order/public/rawIcons/*"],
+      "@/imageIcons/*": ["./apps/neubie-order/public/imageIcons/*"],
+      "@/images/*": ["./apps/neubie-order/public/images/*"],
+      "@/root/*": ["./apps/neubie-order/*"],
+      "@neubie/design-system": ["libs/design-system/src/index.ts"],
+      "@design-system/*": ["libs/design-system/src/*"],
+      "@design-system/root/*": ["./libs/design-system/*"],
+      "@design-system/icons/*": ["./libs/design-system/public/icons/*"]
     }
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.js",
+    "src/**/*.jsx",
+    "next-env.d.ts"
   ],
-  "extends": "../../tsconfig.base.json"
+  "exclude": [
+    "out-tsc",
+    "dist",
+    "node_modules",
+    "jest.config.ts",
+    "src/**/*.spec.ts",
+    "src/**/*.test.ts",
+    ".next",
+    "eslint.config.js",
+    "eslint.config.cjs",
+    "eslint.config.mjs",
+    "public"
+  ]
 }
