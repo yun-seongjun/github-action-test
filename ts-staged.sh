@@ -23,20 +23,13 @@ echo "🔎 TS/TSX changes:"
 printf ' - %s\n' $changed
 
 # 3) 변경 파일 basename들로 요약 필터 패턴 준비
-pat="$(printf '%s\n' $changed | xargs -n1 basename | sed 's/[].[^$*+?{}()|/]/\\&/g' | paste -sd '|' -)"
+pat="$(printf '%s\n' $changed  | sed 's/[].[^$*+?{}()|/]/\\&/g' | paste -sd '|' -)"
 [ -z "$pat" ] && pat='.*'
 
-# 4) affected workspace만 타입체크 실행. 로그만 캡처, 화면엔 요약만
+# 4) 타입체크 실행 (Yarn v1). 로그만 캡처, 화면엔 요약만
 log="$(mktemp)"
-ok=1
-
-for ws in $changed; do
-  echo "▶ type-inspect: $ws"
-  yarn workspace "$ws" run -s type-inspect >>"$log" 2>&1 || ok=0
-done
-
-if [ "$ok" -eq 1 ]; then
-  echo "✓ Type check OK (affected workspaces only)"
+if yarn workspaces run -s type-inspect >"$log" 2>&1; then
+  echo "✓ Type check OK"
   rm -f "$log"
   exit 0
 fi
