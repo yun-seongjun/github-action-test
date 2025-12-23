@@ -27,7 +27,7 @@ jobs:
         run: git fetch origin ${{ github.event.pull_request.base.ref }} --depth=1
 
       - name: Fetch PR base branch (latest)
-        run: git fetch origin ${{ github.event.pull_request.base.ref }} --prune --depth=0
+        run: git fetch origin ${{ github.event.pull_request.base.ref }}
 
       - name: Get affected apps
         id: get
