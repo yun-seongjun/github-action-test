@@ -34,8 +34,7 @@ jobs:
           BASE=${{ github.event.pull_request.base.ref }}
           HEAD=$(git rev-parse HEAD)
           echo "Comparing from $BASE to $HEAD"
-
-          apps=$(yarn nx show projects --affected --base=origin/$BASE --head=$HEAD | tr -d '\r' | tr ' ' '\n' | grep -E "^(neubie-go|neubie-order|neubie-order-admin)$" || true | paste -sd ',' -)
+          apps=$(yarn nx show projects --affected --base=origin/$BASE --head=$HEAD | tr -d '\r' | tr ' ' '\n' | grep -E "^(neubie-go|neubie-order|neubie-order-admin)$" | paste -sd ',' -)
           echo "affected(raw)=$apps"
 
           if [ -z "$apps" ]; then
