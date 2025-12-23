@@ -1,0 +1,63 @@
+name: Selective Build
+
+on:
+  pull_request:
+    branches:
+      - main
+      - dev
+      - staging
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  detect-affected:
+    runs-on: ubuntu-latest
+    outputs:
+      affected_apps: ${{ steps.get.outputs.apps }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Fetch PR base branch
+        run: git fetch origin ${{ github.event.pull_request.base.ref }} --depth=1
+
+      - name: Get affected apps
+        id: get
+        run: |
+          set -euo pipefail
+          BASE=${{ github.event.pull_request.base.ref }}
+          HEAD=$(git rev-parse HEAD)
+          echo "Comparing from $BASE to $HEAD"
+
+          apps=$(yarn nx show projects --affected --base=origin/$BASE --head=$HEAD | tr -d '\r' | tr ' ' '\n' | grep -E "^(neubie-go|neubie-order|neubie-order-admin)$" | paste -sd ',' -)
+          echo "affected(raw)=$apps"
+
+          if [ -z "$apps" ]; then
+            echo "apps=" >> $GITHUB_OUTPUT
+          else
+            echo "apps=,$apps," >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    needs: detect-affected
+    runs-on: ubuntu-latest
+    if: ${{ needs.detect-affected.outputs.affected_apps != '' }}
+    strategy:
+      matrix:
+        app: [neubie-go, neubie-order, neubie-order-admin]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run build steps if app is affected
+        if: contains(needs.detect-affected.outputs.affected_apps, matrix.app)
+        run: |
+          echo "Running steps for affected app: ${{ matrix.app }}"
+          yarn install
+          yarn nx build ${{ matrix.app }}
