@@ -31,16 +31,25 @@ jobs:
         run: |
           set -euo pipefail
           set -x
-          BASE=${{ github.event.pull_request.base.ref }}
-          HEAD=$(git rev-parse HEAD)
-          echo "Comparing from $BASE to $HEAD"
-          apps=$(yarn nx show projects --affected --base=origin/$BASE --head=$HEAD | tr -d '\r' | tr ' ' '\n' | grep -E "^(neubie-go|neubie-order|neubie-order-admin)$" | paste -sd ',' -)
+          BASE_SHA=${{ github.event.pull_request.base.sha }}
+          HEAD_SHA=${{ github.event.pull_request.head.sha }}
+
+          echo "Comparing from $BASE_SHA to $HEAD_SHA"
+
+          apps=$(
+          yarn nx show projects --affected --base="$BASE_SHA" --head="$HEAD_SHA" \
+          | tr -d '\r' \
+          | tr ' ' '\n' \
+          | (grep -E "^(neubie-go|neubie-order|neubie-order-admin)$") \
+          | paste -sd ',' -
+          )
+
           echo "affected(raw)=$apps"
 
           if [ -z "$apps" ]; then
-            echo "apps=" >> $GITHUB_OUTPUT
+          echo "apps=" >> "$GITHUB_OUTPUT"
           else
-            echo "apps=,$apps," >> $GITHUB_OUTPUT
+          echo "apps=,$apps," >> "$GITHUB_OUTPUT"
           fi
 
   build:
