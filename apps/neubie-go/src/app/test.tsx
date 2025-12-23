@@ -7,3 +7,5 @@ const testFn = () => {
 };
 
 testFn();
+testFn();
+testFn();

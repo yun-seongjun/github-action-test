@@ -24,17 +24,23 @@ jobs:
         run: yarn install
 
       - name: Fetch PR base branch
-        run: git fetch origin ${{ github.event.pull_request.base.ref }} --depth=1
+        run: git fetch origin ${{ github.event.pull_request.base.ref }}
 
+
+        # yarn nx show projects --affected --base=$BASE_SHA --head=$HEAD_SHA git diff 범위로 영향을 받는 앱 이름 출력
+        # tr -d '\r' | tr ' ' '\n' 줄바꿈문자 제거, 공백은 줄바꿈으로 (1줄당 앱1개)
+        # grep -E "^(neubie-go|neubie-order|neubie-order-admin)$" 3개 앱이름과 일치하는 줄만 남김
+        # paste -sd ',' - 여러줄이라면 콤마로 붙임
       - name: Get affected apps
         id: get
         run: |
           set -euo pipefail
-          set -x
-          BASE=${{ github.event.pull_request.base.ref }}
-          HEAD=$(git rev-parse HEAD)
-          echo "Comparing from $BASE to $HEAD"
-          apps=$(yarn nx show projects --affected --base=origin/$BASE --head=$HEAD | tr -d '\r' | tr ' ' '\n' | grep -E "^(neubie-go|neubie-order|neubie-order-admin)$" | paste -sd ',' -)
+
+          BASE_SHA="${{ github.event.pull_request.base.ref }}"
+          HEAD_SHA=${{ github.event.pull_request.head.sha }}
+          echo "Comparing from $BASE_SHA to $HEAD_SHA"
+
+          apps=$(yarn nx show projects --affected --base=$BASE_SHA --head=$HEAD_SHA | tr -d '\r' | tr ' ' '\n' | grep -E "^(neubie-go|neubie-order|neubie-order-admin)$" | paste -sd ',' -)
           echo "affected(raw)=$apps"
 
           if [ -z "$apps" ]; then
@@ -46,17 +52,17 @@ jobs:
   build:
     needs: detect-affected
     runs-on: ubuntu-latest
-    if: ${{ needs.detect-affected.outputs.affected_apps != '' }}
+    if: ${{ needs.detect-affected.outputs.affected_apps != '' }} #하나라도 앱이 존재해야 실행
     strategy:
       matrix:
-        app: [neubie-go, neubie-order, neubie-order-admin]
+        app: [neubie-go, neubie-order, neubie-order-admin] #병렬 실행
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Run build steps if app is affected
-        if: contains(needs.detect-affected.outputs.affected_apps, matrix.app)
+        if: contains(needs.detect-affected.outputs.affected_apps, matrix.app) #affected_app에 matrix.app이 존재하면 해당 앱만 빌드
         run: |
           echo "Running steps for affected app: ${{ matrix.app }}"
           yarn install
