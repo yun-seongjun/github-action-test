@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          BASE="origin/${{ github.event.pull_request.base.ref }}"
+          BASE_SHA="${{ github.event.pull_request.base.ref }}"
           HEAD_SHA=${{ github.event.pull_request.head.sha }}
           echo "Comparing from $BASE_SHA to $HEAD_SHA"
 
