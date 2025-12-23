@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           set -x
-          BASE_SHA=${{ github.event.pull_request.base.sha }}
+          BASE="origin/${{ github.event.pull_request.base.ref }}"
           HEAD_SHA=${{ github.event.pull_request.head.sha }}
           echo "Comparing from $BASE_SHA to $HEAD_SHA"
 
@@ -47,17 +47,17 @@ jobs:
   build:
     needs: detect-affected
     runs-on: ubuntu-latest
-    if: ${{ needs.detect-affected.outputs.affected_apps != '' }}
+    if: ${{ needs.detect-affected.outputs.affected_apps != '' }} #하나라도 앱이 존재해야 실행
     strategy:
       matrix:
-        app: [neubie-go, neubie-order, neubie-order-admin]
+        app: [neubie-go, neubie-order, neubie-order-admin] #병렬 실행
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Run build steps if app is affected
-        if: contains(needs.detect-affected.outputs.affected_apps, matrix.app)
+        if: contains(needs.detect-affected.outputs.affected_apps, matrix.app) #affected_app에 matrix.app이 존재하면 해당 앱만 빌드
         run: |
           echo "Running steps for affected app: ${{ matrix.app }}"
           yarn install
