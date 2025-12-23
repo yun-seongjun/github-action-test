@@ -29,3 +29,5 @@ echo "── Error Summary Start ──"
 awk -v IGNORECASE=1 '$0 ~ /error TS[0-9]+:/ { print "• " $0 }' "$log" | sed 's/^/  /'
 echo "── Error Summary End ──"
 exit 1
+
+#test
