@@ -22,6 +22,8 @@ jobs:
 
       - name: Install dependencies
         run: yarn install
+         | yarn -s node -p "require.resolve('@nx/cypress/package.json')"
+
 
         # yarn nx show projects --affected --base=$BASE_SHA --head=$HEAD_SHA git diff 범위로 영향을 받는 앱 이름 출력
         # tr -d '\r' | tr ' ' '\n' 줄바꿈문자 제거, 공백은 줄바꿈으로 (1줄당 앱1개)
