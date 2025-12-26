@@ -69,7 +69,8 @@ jobs:
           fetch-depth: 0
 
       - name: Run build steps if app is affected
-        if: contains(needs.detect-affected.outputs.affected_apps, matrix.app) #affected_app에 matrix.app이 존재하면 해당 앱만 빌드
+        if: contains(needs.detect-affected.outputs.affected_apps, format(',{0},', matrix.app))
+        #affected_app에 matrix.app이 존재하면 해당 앱만 빌드
         run: |
           echo "Running steps for affected app: ${{ matrix.app }}"
           yarn install
