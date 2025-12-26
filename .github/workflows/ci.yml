@@ -51,9 +51,9 @@ jobs:
           echo "affected(mapped)=$apps"
 
           if [ -z "$apps" ]; then
-            echo "apps=" >> "$GITHUB_OUTPUT"
+          echo "apps=" >> "$GITHUB_OUTPUT"
           else
-            echo "apps=,$apps," >> "$GITHUB_OUTPUT"
+          echo "apps=,$apps," >> "$GITHUB_OUTPUT"
           fi
 
   build:
