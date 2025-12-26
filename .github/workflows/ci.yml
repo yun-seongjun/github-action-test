@@ -26,6 +26,8 @@ jobs:
       - name: Get changed files from PR (GitHub API) and map to apps
         id: get
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           set -x
