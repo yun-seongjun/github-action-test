@@ -8,7 +8,7 @@ export {};
 const testFn = () => {
   return null;
 };
-
+testFn();
 testFn();
 testFn();
 testFn();
