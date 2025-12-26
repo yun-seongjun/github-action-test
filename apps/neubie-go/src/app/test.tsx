@@ -10,3 +10,4 @@ testFn();
 testFn();
 testFn();
 testFn();
+testFn();
