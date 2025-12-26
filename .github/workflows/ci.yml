@@ -34,6 +34,7 @@ jobs:
         id: get
         run: |
           set -euo pipefail
+          set -x
           BASE=${{ github.event.pull_request.base.ref }}
           HEAD=$(git rev-parse HEAD)
           echo "Comparing from $BASE to $HEAD"
