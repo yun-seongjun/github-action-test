@@ -2,13 +2,10 @@ name: Selective Build
 
 on:
   pull_request:
-    branches:
-      - main
-      - dev
-      - staging
+    branches: [main, dev, staging]
 
 env:
-  NEXT_TELEMETRY_DISABLED: '1'
+  NEXT_TELEMETRY_DISABLED: "1"
 
 jobs:
   detect-affected:
@@ -17,61 +14,71 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      affected_apps: ${{ steps.get.outputs.apps }}
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Detect affected apps from PR files
-        id: get
+      - name: Build matrix from changed files
+        id: set-matrix
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-          REPO="${{ github.repository }}"
+          pr="${{ github.event.pull_request.number }}"
+          repo="${{ github.repository }}"
 
-          files="$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')"
+          files="$(gh api "repos/$repo/pulls/$pr/files" --paginate --jq '.[].filename')"
 
-          apps=""
+          apps=()
           while IFS= read -r f; do
             case "$f" in
-              apps/neubie-go/*)          apps="$apps neubie-go" ;;
-              apps/neubie-order/*)       apps="$apps neubie-order" ;;
-              apps/neubie-order-admin/*) apps="$apps neubie-order-admin" ;;
+              apps/neubie-go/*)          apps+=("neubie-go") ;;
+              apps/neubie-order/*)       apps+=("neubie-order") ;;
+              apps/neubie-order-admin/*) apps+=("neubie-order-admin") ;;
             esac
           done <<< "$files"
 
-          # 중복 제거 + csv
-          apps="$(printf '%s\n' $apps | awk 'NF && !seen[$0]++' | paste -sd ',' -)"
+          # dedupe
+          uniq_apps="$(printf '%s\n' "${apps[@]}" | awk 'NF && !seen[$0]++')"
 
-          echo "affected(mapped)=$apps"
-
-          if [ -z "$apps" ]; then
-          echo "apps=" >> "$GITHUB_OUTPUT"
-          else
-          echo "apps=,$apps," >> "$GITHUB_OUTPUT"
+          if [ -z "$uniq_apps" ]; then
+            echo 'matrix={"include":[]}' >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          # {"include":[{"app":"neubie-go"},{"app":"neubie-order"}]}
+          json='{"include":['
+          first=1
+          while IFS= read -r a; do
+            [ -z "$a" ] && continue
+            if [ $first -eq 0 ]; then json+=','; fi
+            first=0
+            json+='{"app":"'"$a"'"}'
+          done <<< "$uniq_apps"
+          json+=']}'
+
+          echo "matrix=$json" >> "$GITHUB_OUTPUT"
+          echo "Affected apps:"
+          echo "$uniq_apps"
 
   build:
     needs: detect-affected
     runs-on: ubuntu-latest
-    if: ${{ needs.detect-affected.outputs.affected_apps != '' }} #하나라도 앱이 존재해야 실행
+    if: ${{ fromJson(needs.detect-affected.outputs.matrix).include[0] != null }}
     strategy:
-      matrix:
-        app: [neubie-go, neubie-order, neubie-order-admin] #병렬 실행
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect-affected.outputs.matrix) }}
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Run build steps if app is affected
-        if: contains(needs.detect-affected.outputs.affected_apps, format(',{0},', matrix.app))
-        #affected_app에 matrix.app이 존재하면 해당 앱만 빌드
-        run: |
-          echo "Running steps for affected app: ${{ matrix.app }}"
-          yarn install
-          yarn nx build ${{ matrix.app }}
+      - run: yarn install
+
+      - name: Build
+        run: yarn nx build ${{ matrix.app }}
