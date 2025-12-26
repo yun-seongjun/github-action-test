@@ -23,52 +23,30 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Get changed files from PR (GitHub API) and map to apps
+      - name: Detect affected apps from PR files
         id: get
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          set -x
 
           PR_NUMBER="${{ github.event.pull_request.number }}"
           REPO="${{ github.repository }}"
 
-          # PR에서 변경된 파일 목록 전체(페이지네이션 포함)
-          files="$(
-            gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate \
-              --jq '.[].filename'
-          )"
-
-          echo "Changed files:"
-          printf '%s\n' "$files"
-
-          # 여기 경로는 레포 구조에 맞게 조정하세요.
-          # 예시: apps/<app-name>/... 형태를 가정
-          is_go=0
-          is_order=0
-          is_admin=0
-          is_shared=0
-
-          # 앱 경로 감지
-          printf '%s\n' "$files" | grep -qE '^apps/neubie-go/' && is_go=1 || true
-          printf '%s\n' "$files" | grep -qE '^apps/neubie-order/' && is_order=1 || true
-          printf '%s\n' "$files" | grep -qE '^apps/neubie-order-admin/' && is_admin=1 || true
-
-          # 공용 변경 감지(필요한 경로/파일만 골라서 추가하세요)
-          printf '%s\n' "$files" | grep -qE '^(libs/|packages/|shared/|tools/|nx\.json$|package\.json$|yarn\.lock$|tsconfig.*\.json$)' && is_shared=1 || true
+          files="$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')"
 
           apps=""
+          while IFS= read -r f; do
+            case "$f" in
+              apps/neubie-go/*)          apps="$apps neubie-go" ;;
+              apps/neubie-order/*)       apps="$apps neubie-order" ;;
+              apps/neubie-order-admin/*) apps="$apps neubie-order-admin" ;;
+            esac
+          done <<< "$files"
 
-          if [ "$is_shared" -eq 1 ]; then
-            apps="neubie-go,neubie-order,neubie-order-admin"
-          else
-            [ "$is_go" -eq 1 ] && apps="${apps}neubie-go,"
-            [ "$is_order" -eq 1 ] && apps="${apps}neubie-order,"
-            [ "$is_admin" -eq 1 ] && apps="${apps}neubie-order-admin,"
-            apps="${apps%,}"  # trailing comma 제거
-          fi
+          # 중복 제거 + csv
+          apps="$(printf '%s\n' $apps | awk 'NF && !seen[$0]++' | paste -sd ',' -)"
 
           echo "affected(mapped)=$apps"
 
@@ -77,7 +55,6 @@ jobs:
           else
             echo "apps=,$apps," >> "$GITHUB_OUTPUT"
           fi
-
 
   build:
     needs: detect-affected
