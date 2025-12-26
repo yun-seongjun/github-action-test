@@ -14,48 +14,36 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      build_matrix: ${{ steps.set-build-matrix.outputs.build_matrix }}
+      build_matrix: ${{ steps.detect.outputs.build_matrix }}
+      has_apps: ${{ steps.detect.outputs.has_apps }}
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
       - name: Detect changed apps and create build matrix
-        id: set-build-matrix
+        id: detect
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          pr="${{ github.event.pull_request.number }}"
+          repo="${{ github.repository }}"
 
-          pull_request_number="${{ github.event.pull_request.number }}"
-          repository_full_name="${{ github.repository }}"
-
-          build_matrix="$(
-            gh api "repos/$repository_full_name/pulls/$pull_request_number/files" \
-              --paginate \
-              --jq '
-                [.[].filename
-                  | select(startswith("apps/"))
-                  | split("/")[1]
-                ]
-                | unique
-                | { app: . }
-              '
+          apps_json="$(
+            gh api "repos/$repo/pulls/$pr/files" --paginate --jq '
+              [.[].filename
+                | select(startswith("apps/"))
+                | split("/")[1]
+              ] | unique
+            ' | jq -c .
           )"
 
-          # GITHUB_OUTPUT에 안전하게 1줄 JSON으로 기록
-          build_matrix="$(echo "$build_matrix" | jq -c '.')"
-
-          echo "build_matrix=$build_matrix" >> "$GITHUB_OUTPUT"
-          echo "Build matrix: $build_matrix"
+          echo "build_matrix=$(jq -cn --argjson apps "$apps_json" '{app:$apps}')" >> "$GITHUB_OUTPUT"
+          echo "has_apps=$(jq -r 'length>0' <<<"$apps_json")" >> "$GITHUB_OUTPUT"
 
   build:
     needs: detect-affected
     runs-on: ubuntu-latest
-    # app 배열이 비어있으면 스킵
-    if: ${{ toJson(fromJson(needs.detect-affected.outputs.build_matrix).app) != '[]' }}
+    if: ${{ needs.detect-affected.outputs.has_apps == 'true' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.detect-affected.outputs.build_matrix) }}
