@@ -45,12 +45,16 @@ jobs:
               '
           )"
 
-          #echo "build_matrix=$build_matrix" >> "$GITHUB_OUTPUT"
+          # output은 반드시 1줄로 (GITHUB_OUTPUT 포맷 안전)
+          build_matrix="$(echo "$build_matrix" | jq -c '.')"
+
+          echo "build_matrix=$build_matrix" >> "$GITHUB_OUTPUT"
+          echo "Build matrix: $build_matrix"
 
   build:
     needs: detect-affected
     runs-on: ubuntu-latest
-    if: ${{ fromJson(needs.detect-affected.outputs.build_matrix).include[0] }
+    if: ${{ fromJson(needs.detect-affected.outputs.build_matrix).include[0] }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.detect-affected.outputs.build_matrix) }}
