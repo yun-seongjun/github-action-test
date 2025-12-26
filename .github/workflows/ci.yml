@@ -13,55 +13,69 @@ env:
 jobs:
   detect-affected:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       affected_apps: ${{ steps.get.outputs.apps }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
-      - name: Install dependencies
-        run: yarn install
-         | yarn -s node -p "require.resolve('@nx/cypress/package.json')"
-
-
-        # yarn nx show projects --affected --base=$BASE_SHA --head=$HEAD_SHA git diff 범위로 영향을 받는 앱 이름 출력
-        # tr -d '\r' | tr ' ' '\n' 줄바꿈문자 제거, 공백은 줄바꿈으로 (1줄당 앱1개)
-        # grep -E "^(neubie-go|neubie-order|neubie-order-admin)$" 3개 앱이름과 일치하는 줄만 남김
-        # paste -sd ',' - 여러줄이라면 콤마로 붙임
-      - name: Get affected apps
+      - name: Get changed files from PR (GitHub API) and map to apps
         id: get
         shell: bash
         run: |
           set -euo pipefail
           set -x
 
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          REPO="${{ github.repository }}"
 
-          echo "Comparing from $BASE_SHA to $HEAD_SHA"
-
-          # Nx 결과를 먼저 확보 (여기서 실패하면 진짜 실패)
-          raw="$(yarn -s nx show projects --affected --base="$BASE_SHA" --head="$HEAD_SHA")"
-          echo "nx_raw=$raw"
-
-          # 필터링: 매칭 0개여도 정상 처리
-          apps="$(
-            printf "%s\n" "$raw" \
-              | tr -d '\r' \
-              | tr ' ' '\n' \
-              | grep -E "^(neubie-go|neubie-order|neubie-order-admin)$" \
-              | paste -sd ',' - \
-              || true
+          # PR에서 변경된 파일 목록 전체(페이지네이션 포함)
+          files="$(
+            gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate \
+              --jq '.[].filename'
           )"
 
-          echo "affected(filtered)=$apps"
+          echo "Changed files:"
+          printf '%s\n' "$files"
+
+          # 여기 경로는 레포 구조에 맞게 조정하세요.
+          # 예시: apps/<app-name>/... 형태를 가정
+          is_go=0
+          is_order=0
+          is_admin=0
+          is_shared=0
+
+          # 앱 경로 감지
+          printf '%s\n' "$files" | grep -qE '^apps/neubie-go/' && is_go=1 || true
+          printf '%s\n' "$files" | grep -qE '^apps/neubie-order/' && is_order=1 || true
+          printf '%s\n' "$files" | grep -qE '^apps/neubie-order-admin/' && is_admin=1 || true
+
+          # 공용 변경 감지(필요한 경로/파일만 골라서 추가하세요)
+          printf '%s\n' "$files" | grep -qE '^(libs/|packages/|shared/|tools/|nx\.json$|package\.json$|yarn\.lock$|tsconfig.*\.json$)' && is_shared=1 || true
+
+          apps=""
+
+          if [ "$is_shared" -eq 1 ]; then
+            apps="neubie-go,neubie-order,neubie-order-admin"
+          else
+            [ "$is_go" -eq 1 ] && apps="${apps}neubie-go,"
+            [ "$is_order" -eq 1 ] && apps="${apps}neubie-order,"
+            [ "$is_admin" -eq 1 ] && apps="${apps}neubie-order-admin,"
+            apps="${apps%,}"  # trailing comma 제거
+          fi
+
+          echo "affected(mapped)=$apps"
 
           if [ -z "$apps" ]; then
             echo "apps=" >> "$GITHUB_OUTPUT"
           else
             echo "apps=,$apps," >> "$GITHUB_OUTPUT"
           fi
+
 
   build:
     needs: detect-affected
