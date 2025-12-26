@@ -29,6 +29,7 @@ jobs:
         # paste -sd ',' - 여러줄이라면 콤마로 붙임
       - name: Get affected apps
         id: get
+        shell: bash
         run: |
           set -euo pipefail
           set -x
@@ -38,17 +39,26 @@ jobs:
 
           echo "Comparing from $BASE_SHA to $HEAD_SHA"
 
-          apps=$(yarn nx show projects --affected \
-          --base="$BASE_SHA" --head="$HEAD_SHA" \
-          | tr -d '\r' | tr ' ' '\n' \
-          | grep -E "^(neubie-go|neubie-order|neubie-order-admin)$" \
-          | paste -sd ',' -)
+          # Nx 결과를 먼저 확보 (여기서 실패하면 진짜 실패)
+          raw="$(yarn -s nx show projects --affected --base="$BASE_SHA" --head="$HEAD_SHA")"
+          echo "nx_raw=$raw"
 
-          echo "affected(raw)=$apps"
+          # 필터링: 매칭 0개여도 정상 처리
+          apps="$(
+            printf "%s\n" "$raw" \
+              | tr -d '\r' \
+              | tr ' ' '\n' \
+              | grep -E "^(neubie-go|neubie-order|neubie-order-admin)$" \
+              | paste -sd ',' - \
+              || true
+          )"
+
+          echo "affected(filtered)=$apps"
+
           if [ -z "$apps" ]; then
-          echo "apps=" >> "$GITHUB_OUTPUT"
+            echo "apps=" >> "$GITHUB_OUTPUT"
           else
-          echo "apps=,$apps," >> "$GITHUB_OUTPUT"
+            echo "apps=,$apps," >> "$GITHUB_OUTPUT"
           fi
 
   build:
