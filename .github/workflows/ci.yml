@@ -41,11 +41,11 @@ jobs:
                   | split("/")[1]
                 ]
                 | unique
-                | { include: map({ app: . }) }
+                | { app: . }
               '
           )"
 
-          # output은 반드시 1줄로 (GITHUB_OUTPUT 포맷 안전)
+          # GITHUB_OUTPUT에 안전하게 1줄 JSON으로 기록
           build_matrix="$(echo "$build_matrix" | jq -c '.')"
 
           echo "build_matrix=$build_matrix" >> "$GITHUB_OUTPUT"
@@ -54,7 +54,8 @@ jobs:
   build:
     needs: detect-affected
     runs-on: ubuntu-latest
-    if: ${{ fromJson(needs.detect-affected.outputs.build_matrix).include[0] }}
+    # app 배열이 비어있으면 스킵
+    if: ${{ toJson(fromJson(needs.detect-affected.outputs.build_matrix).app) != '[]' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.detect-affected.outputs.build_matrix) }}
