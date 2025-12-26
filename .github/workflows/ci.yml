@@ -37,11 +37,9 @@ jobs:
           HEAD_SHA="${{ github.event.pull_request.head.sha }}"
           echo "Comparing from $BASE_SHA to $HEAD_SHA"
 
-          apps=$(yarn -s nx show projects --affected \
-          --base="$BASE_SHA" --head="$HEAD_SHA" \
-          --projects="neubie-go,neubie-order,neubie-order-admin" \
-          | tr -d '\r' \
-          | paste -sd ',' - )
+          out="$(yarn -s nx show projects --affected --base="$BASE_SHA" --head="$HEAD_SHA" --projects="neubie-go,neubie-order,neubie-order-admin")"
+          echo "$out"
+          apps="$(echo "$out" | grep -E '^(neubie-go|neubie-order|neubie-order-admin)$' | paste -sd ',' -)"
 
           echo "affected(raw)=$apps"
 
