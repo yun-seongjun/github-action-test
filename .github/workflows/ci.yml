@@ -41,7 +41,7 @@ jobs:
           # split("/")[1] "apps/{app}/" 에서 실제 앱 이름 app만
           # unique 중복제거
           # | jq -c . "-c" 한줄로 + "." 그대로 출력
-          echo gh api "repos/$repo/pulls/$pr/files" --paginate
+          gh api "repos/$repo/pulls/$pr/files" --paginate
           apps_json="$(
             gh api "repos/$repo/pulls/$pr/files" --paginate --jq '
               [.[].filename
