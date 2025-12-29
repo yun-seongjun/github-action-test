@@ -29,9 +29,9 @@ jobs:
           set -euo pipefail
 
           # pr번호
-          pr="${{ github.event.pull_request.number }}"
+          pr='${{ github.event.pull_request.number }}'
           # repo 전체 이름
-          repo="${{ github.repository }}"
+          repo='${{ github.repository }}'
 
           # gh api "repos/$repo/pulls/$pr/files" pr에 변경된 파일 목록 가져오기
           # --paginate gh api 응답양이 많아도 전체 가져오기
