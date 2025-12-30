@@ -18,7 +18,6 @@ jobs:
       pull-requests: read
     outputs:
       build_matrix: ${{ steps.detect.outputs.build_matrix }}
-      has_apps: ${{ steps.detect.outputs.has_apps }}
 
     steps:
       - name: Detect changed apps and create build matrix
@@ -30,9 +29,9 @@ jobs:
           set -euo pipefail
 
           # pr번호
-          pr="${{ github.event.pull_request.number }}"
+          pr='${{ github.event.pull_request.number }}'
           # repo 전체 이름
-          repo="${{ github.repository }}"
+          repo='${{ github.repository }}'
 
           # gh api "repos/$repo/pulls/$pr/files" pr에 변경된 파일 목록 가져오기
           # --paginate gh api 응답양이 많아도 전체 가져오기
@@ -42,6 +41,7 @@ jobs:
           # split("/")[1] "apps/{app}/" 에서 실제 앱 이름 app만
           # unique 중복제거
           # | jq -c . "-c" 한줄로 + "." 그대로 출력
+          gh api "repos/$repo/pulls/$pr/files" --paginate
           apps_json="$(
             gh api "repos/$repo/pulls/$pr/files" --paginate --jq '
               [.[].filename
@@ -57,15 +57,10 @@ jobs:
           # >> "$GITHUB_OUTPUT" build_matrix에 해당 객체를 주입
           echo "build_matrix=$(jq -cn --argjson apps "$apps_json" '{app:$apps}')" >> "$GITHUB_OUTPUT"
 
-          # jq -r 'length>0' 배열의 길이가 0보다 크면 true ("-r" 옵션으로 boolean이 아닌 "true")
-          # <<<"$apps_json" apps_json을 입력. 즉 apps_json 배열의 길이가 0보다 크면 "true" 작으면 "false"
-          # >> "$GITHUB_OUTPUT" has_apps에 해당 값을 주입
-          echo "has_apps=$(jq -r 'length>0' <<<"$apps_json")" >> "$GITHUB_OUTPUT"
-
   build:
     needs: detect-affected
     runs-on: ubuntu-latest
-    if: ${{ needs.detect-affected.outputs.has_apps == 'true' }}
+    if: ${{ needs.detect-affected.outputs.build_matrix != '{"app":[]}' }}
     # 해당 job을 어떻게 실행할 것인지 정의
     strategy:
       # 메트릭스중 하나가 실패하더라도 디른건 계속 진행
