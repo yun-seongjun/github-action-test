@@ -22,16 +22,17 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Review this PR against our team checklist:
+            다음 PR을 체크리스트에 따라 검토해 주세요:
 
-            ## Code Quality
-            - [ ] Code follows our style guide
-            - [ ] No commented-out code
-            - [ ] Meaningful variable names
-            - [ ] DRY principle followed
+            ## 코드 품질
+            - [ ] 코드 스타일 가이드 준수
+            - [ ] 의미있는 변수 이름 사용
+            - [ ] DRY 원칙 준수
+            - [ ] KISS 원칙 준수
+            - [ ] YAGNI 원칙 준수
 
-            For each item, check if it's satisfied and comment on any that need attention.
-            Post a summary comment with checklist results.
+            각 항목에 대해 충족 여부를 확인하고, 개선이 필요한 항목에는 댓글을 남겨주세요.
+            체크리스트 결과를 요약하여 댓글로 남겨주세요.
 
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*)"
