@@ -14,4 +14,4 @@ const c = () => {
 };
 const d = () => 'test';
 const e = () => 'test';
-console.log(a, b, c, d);
+console.log(a, b, c, d, e);
