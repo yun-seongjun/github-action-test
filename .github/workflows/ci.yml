@@ -43,7 +43,6 @@ jobs:
             echo "found=false" >> "$GITHUB_OUTPUT"
           else
             echo "found=true" >> "$GITHUB_OUTPUT"
-            # jq로 안전하게 JSON 생성
             echo "matrix=$(echo "$apps" | jq -c '{app: .}')" >> "$GITHUB_OUTPUT"
           fi
 
