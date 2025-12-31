@@ -13,5 +13,5 @@ const c = () => {
   return 'test';
 };
 const d = () => 'test';
-const e = () => 'test';
+const formatTestString = () => 'test';
 console.log(a, b, c, d, e);
