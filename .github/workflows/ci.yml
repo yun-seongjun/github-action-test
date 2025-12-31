@@ -25,8 +25,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          pr='${{ github.event.pull_request.number }}'
           repo='${{ github.repository }}'
+          pr='${{ github.event.pull_request.number }}'
 
           # gh api "repos/$repo/pulls/$pr/files" pr에 변경된 파일 목록 가져오기
           # --paginate gh api 응답양이 많아도 전체 가져오기
@@ -36,7 +36,7 @@ jobs:
           # split("/")[1] "apps/{app}/" 에서 실제 앱 이름 app만
           # unique 중복제거
           # | jq -c . "-c" 한줄로 + "." 그대로 출력
-          apps=$(gh api "repos/$repo/pulls/$pr/files/files" \
+          apps=$(gh api "repos/$repo/pulls/$pr/files" \
           --paginate --jq '[.[].filename | select(startswith("apps/")) | split("/")[1]] | unique')
 
           echo "matrix={\"app\":$apps}" >> "$GITHUB_OUTPUT"
