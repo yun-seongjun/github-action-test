@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "es6",
+    "noEmit": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "paths": {
+      "@design-system/*": ["./libs/design-system/src/*"],
+      "@design-system/root/*": ["./libs/design-system/*"],
+      "@design-system/icons/*": ["./libs/design-system/public/icons/*"],
+    }
+  },
+  "files": [],
+  "include": [
+    "src/**/*.js",
+    "src/**/*.jsx",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "svg.d.ts"],
+  "excludeExternals": true,
+  "extends": "../../tsconfig.base.json"
+}

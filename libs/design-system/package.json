@@ -1,0 +1,9 @@
+{
+  "name": "@neubie/design-system",
+  "version": "0.0.1",
+  "private": "true",
+  "scripts": {
+    "build-icons": "node ../../scripts/build-icon-script.js && node ../../scripts/lazy-icon-script.js",
+    "type-inspect": "echo @design-system are not included"
+  }
+}
