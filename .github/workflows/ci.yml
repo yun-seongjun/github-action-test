@@ -37,13 +37,12 @@ jobs:
           apps=$(gh api "repos/$repo/pulls/$pr/files" \
             --paginate --jq '[.[].filename | select(startswith("apps/")) | split("/")[1]] | unique')
 
-          if [ "$apps" = "[]" ]; then
+          if [ "$apps" = "[]" ] || [ -z "$apps" ]; then
             echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "matrix={\"app\":[]}" >> "$GITHUB_OUTPUT"
           else
             echo "found=true" >> "$GITHUB_OUTPUT"
-            cat <<EOF >> "$GITHUB_OUTPUT"
-          matrix={"app":$apps}
-          EOF
+            echo "matrix={\"app\":$apps}" >> "$GITHUB_OUTPUT"
           fi
 
   build:
