@@ -50,7 +50,7 @@ jobs:
   build:
     needs: detect-affected
     runs-on: ubuntu-latest
-    if: needs.detect.outputs.found == 'true'
+    if: needs.detect-affected.outputs.found == 'true'
     # 해당 job을 어떻게 실행할 것인지 정의
     strategy:
       # 메트릭스중 하나가 실패하더라도 디른건 계속 진행
