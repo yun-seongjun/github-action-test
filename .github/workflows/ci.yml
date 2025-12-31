@@ -37,12 +37,14 @@ jobs:
           apps=$(gh api "repos/$repo/pulls/$pr/files" \
             --paginate --jq '[.[].filename | select(startswith("apps/")) | split("/")[1]] | unique')
 
-          if [ "$apps" = "[]" ] || [ -z "$apps" ]; then
+          count=$(echo "$apps" | jq 'length')
+
+          if [ "$count" -eq 0 ]; then
             echo "found=false" >> "$GITHUB_OUTPUT"
-            echo "matrix={\"app\":[]}" >> "$GITHUB_OUTPUT"
           else
             echo "found=true" >> "$GITHUB_OUTPUT"
-            echo "matrix={\"app\":$apps}" >> "$GITHUB_OUTPUT"
+            # jq로 안전하게 JSON 생성
+            echo "matrix=$(echo "$apps" | jq -c '{app: .}')" >> "$GITHUB_OUTPUT"
           fi
 
   build:
