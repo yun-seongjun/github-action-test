@@ -23,8 +23,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-
           repo='${{ github.repository }}'
           pr='${{ github.event.pull_request.number }}'
 
