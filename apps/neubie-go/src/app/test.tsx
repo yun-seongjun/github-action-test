@@ -13,5 +13,5 @@ const c = () => {
   return 'test';
 };
 const d = () => 'test';
-
-console.log(a, b, c, d);
+const e = () => 'test';
+console.log(a, b, c, d, e);
