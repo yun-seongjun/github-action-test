@@ -1,6 +1,6 @@
 {
   "name": "@neubie/neubie-order-admin",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "scripts": {
     "web": "nx dev",
@@ -26,14 +26,12 @@
     ]
   },
   "dependencies": {
-    "@nx/next": "^20.3.0",
     "daisyui": "^2.52.0",
     "i18next": "23.5.1",
     "next": "14.2.16",
     "next-i18next": "^14.0.3",
     "react": "18.2.0",
     "react-beautiful-dnd": "^13.1.1",
-    "react-dom": "18.2.0",
     "react-i18next": "13.2.2",
     "react-tooltip": "^5.28.0"
   },

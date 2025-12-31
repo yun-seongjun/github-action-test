@@ -4,15 +4,33 @@
     "target": "es2016",
     "incremental": true,
     "paths": {
-      "@/*": ["./apps/neubie-go/src/*"],
-      "@/icons/*": ["./apps/neubie-go/public/icons/*"],
-      "@/imageIcons/*": ["./apps/neubie-go/public/imageIcons/*"],
-      "@/images/*": ["./apps/neubie-go/public/images/*"],
-      "@/root/*": ["./apps/neubie-go/*"],
-      "@neubie/design-system": ["libs/design-system/src/index.ts"],
-      "@design-system/*": ["libs/design-system/src/*"],
-      "@design-system/root/*": ["./libs/design-system/*"],
-      "@design-system/icons/*": ["./libs/design-system/public/icons/*"]
+      "@/*": [
+        "./apps/neubie-go/src/*"
+      ],
+      "@/icons/*": [
+        "./apps/neubie-go/public/icons/*"
+      ],
+      "@/imageIcons/*": [
+        "./apps/neubie-go/public/imageIcons/*"
+      ],
+      "@/images/*": [
+        "./apps/neubie-go/public/images/*"
+      ],
+      "@/root/*": [
+        "./apps/neubie-go/*"
+      ],
+      "@neubie/design-system": [
+        "libs/design-system/src/index.ts"
+      ],
+      "@design-system/*": [
+        "libs/design-system/src/*"
+      ],
+      "@design-system/root/*": [
+        "./libs/design-system/*"
+      ],
+      "@design-system/icons/*": [
+        "./libs/design-system/public/icons/*"
+      ]
     }
   },
   "include": [
@@ -20,7 +38,8 @@
     "src/**/*.tsx",
     "src/**/*.js",
     "src/**/*.jsx",
-    "next-env.d.ts"
+    "next-env.d.ts",
+    ".next/types/**/*.ts"
   ],
   "exclude": [
     "out-tsc",
