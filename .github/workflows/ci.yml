@@ -13,25 +13,19 @@ env:
 jobs:
   detect-affected:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
     outputs:
-      build_matrix: ${{ steps.detect.outputs.build_matrix }}
-      has_apps: ${{ steps.detect.outputs.has_apps }}
+      matrix: ${{ steps.find.outputs.matrix }}
+      found: ${{ steps.find.outputs.found }}
 
     steps:
-      - name: Detect changed apps and create build matrix
-        id: detect
-        shell: bash
+      - name: Find changed apps
+        id: find
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          # pr번호
           pr='${{ github.event.pull_request.number }}'
-          # repo 전체 이름
           repo='${{ github.repository }}'
 
           # gh api "repos/$repo/pulls/$pr/files" pr에 변경된 파일 목록 가져오기
@@ -42,33 +36,21 @@ jobs:
           # split("/")[1] "apps/{app}/" 에서 실제 앱 이름 app만
           # unique 중복제거
           # | jq -c . "-c" 한줄로 + "." 그대로 출력
-          gh api "repos/$repo/pulls/$pr/files" --paginate
-          apps_json="$(
-            gh api "repos/$repo/pulls/$pr/files" --paginate --jq '
-              [.[].filename
-                | select(startswith("apps/"))
-                | split("/")[1]
-              ] | unique
-            ' | jq -c .
-          )"
+          apps=$(gh api "repos/$repo/pulls/$pr/files/files" \
+          --paginate --jq '[.[].filename | select(startswith("apps/")) | split("/")[1]] | unique')
 
+          echo "matrix={\"app\":$apps}" >> "$GITHUB_OUTPUT"
 
-          # jq -cn "-c" 한줄로 출력 + "-n" 새로운 json
-          # --argjson apps "$apps_json" apps 라는 jq변수에 apps_json이란 값을 json으로 넣는다
-          # {app:$apps} 같은 형태의 객체 생성
-          # >> "$GITHUB_OUTPUT" build_matrix에 해당 객체를 주입
-          echo "build_matrix={\"app\":${apps:-[]}}" >> "$GITHUB_OUTPUT"
-
-          if [ "$apps" = "[]" ] || [ -z "$apps" ]; then
-            echo "has_apps=false" >> "$GITHUB_OUTPUT"
+          if [ "$apps" = "[]" ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
           else
-            echo "has_apps=true" >> "$GITHUB_OUTPUT"
+            echo "found=true" >> "$GITHUB_OUTPUT"
           fi
 
   build:
     needs: detect-affected
     runs-on: ubuntu-latest
-    if: needs.detect-affected.outputs.has_apps == 'true'
+    if: needs.detect.outputs.found == 'true'
     # 해당 job을 어떻게 실행할 것인지 정의
     strategy:
       # 메트릭스중 하나가 실패하더라도 디른건 계속 진행
@@ -78,20 +60,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
           cache: 'yarn'
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-
-      - name: Reset Nx cache
-        run: yarn nx reset
 
       - name: Build app
         run: yarn nx build ${{ matrix.app }}
