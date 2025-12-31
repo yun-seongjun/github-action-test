@@ -23,6 +23,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+
           repo='${{ github.repository }}'
           pr='${{ github.event.pull_request.number }}'
 
@@ -53,7 +55,7 @@ jobs:
       # 메트릭스중 하나가 실패하더라도 디른건 계속 진행
       fail-fast: false
       # 각 메트릭스 항목만큼 실행
-      matrix: ${{ fromJson(needs.detect-affected.outputs.build_matrix) }}
+      matrix: ${{ fromJson(needs.detect-affected.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v4
