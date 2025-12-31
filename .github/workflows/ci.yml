@@ -86,4 +86,4 @@ jobs:
         run: yarn nx reset
 
       - name: Build app
-        run: yarn nx build ${{ matrix.app }}
+        run: yarn nx build ${{ matrix.app }} --verbose
