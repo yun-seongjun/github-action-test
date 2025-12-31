@@ -40,6 +40,8 @@ jobs:
           | jq -Rc '.' \
           | jq -sc '.')
 
+          echo "DEBUG changed_apps: $changed_apps"
+
           if [ "$changed_apps" = "[]" ]; then
             echo "has-changes=false" >> "$GITHUB_OUTPUT"
           else
