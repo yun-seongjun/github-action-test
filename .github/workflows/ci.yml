@@ -33,7 +33,7 @@ jobs:
           # sort -u 정렬 후 중복제거
           # jq -Rc '.' 각 줄을 JSON 문자열로 변경
           # jq -sc '.' 생성된 여러 JSON을 배열화
-          changed_apps=$(gh api "repos/$repo/pulls/$pr/files" --paginate --jq '.[].filename' \
+          changed_apps=$(gh api "repos/$repo/pulls/$pr_number/files" --paginate --jq '.[].filename' \
           | grep '^apps/' \
           | cut -d'/' -f2 \
           | sort -u \
