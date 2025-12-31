@@ -34,8 +34,11 @@ jobs:
           # split("/")[1] "apps/{app}/" 에서 실제 앱 이름 app만
           # unique 중복제거
           # | jq -c . "-c" 한줄로 + "." 그대로 출력
-          apps=$(gh api "repos/$repo/pulls/$pr/files" \
-            --paginate --jq '[.[].filename | select(startswith("apps/")) | split("/")[1]] | unique' | jq -c '.')
+          apps=$(gh api "repos/$repo/pulls/$pr/files" --paginate --jq '.[].filename' \
+          | grep '^apps/' \
+          | cut -d'/' -f2 \
+          | sort -u \
+          | jq -R -s -c 'split("\n") | map(select(length > 0))')
 
           echo "DEBUG apps: $apps"
 
