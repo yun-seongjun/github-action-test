@@ -45,9 +45,14 @@ jobs:
           if [ "$apps" = "[]" ] || [ -z "$apps" ]; then
             echo "found=false" >> "$GITHUB_OUTPUT"
           else
+            matrix_value="{\"app\":$apps}"
+            echo "DEBUG matrix: $matrix_value"
             echo "found=true" >> "$GITHUB_OUTPUT"
-            echo 'matrix={"app":%s}\n' "$apps" >> "$GITHUB_OUTPUT"
+            echo "matrix=$matrix_value" >> "$GITHUB_OUTPUT"
           fi
+
+          echo "DEBUG GITHUB_OUTPUT content:"
+          cat "$GITHUB_OUTPUT"
 
   build:
     needs: detect-affected
