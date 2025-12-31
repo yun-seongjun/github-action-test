@@ -35,15 +35,15 @@ jobs:
           # unique 중복제거
           # | jq -c . "-c" 한줄로 + "." 그대로 출력
           apps=$(gh api "repos/$repo/pulls/$pr/files" \
-            --paginate --jq '[.[].filename | select(startswith("apps/")) | split("/")[1]] | unique')
+            --paginate --jq '[.[].filename | select(startswith("apps/")) | split("/")[1]] | unique' | jq -c '.')
 
-          count=$(echo "$apps" | jq '. | length')
+          echo "DEBUG apps: $apps"
 
-          if [ "$count" -eq 0 ]; then
+          if [ "$apps" = "[]" ] || [ -z "$apps" ]; then
             echo "found=false" >> "$GITHUB_OUTPUT"
           else
             echo "found=true" >> "$GITHUB_OUTPUT"
-            echo "matrix={\"app\":$apps}" >> "$GITHUB_OUTPUT"
+            echo 'matrix={"app":%s}\n' "$apps" >> "$GITHUB_OUTPUT"
           fi
 
   build:
