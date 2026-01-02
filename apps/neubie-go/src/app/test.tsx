@@ -14,4 +14,7 @@ const c = () => {
 };
 const d = () => 'test';
 const e = () => 'test';
+const f = () => {
+  return 'test';
+}
 console.log(a, b, c, d, e);
