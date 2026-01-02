@@ -8,7 +8,7 @@ on:
       - staging
 
 env:
-  NEXT_TELEMETRY_DISABLED: "1"
+  NEXT_TELEMETRY_DISABLED: '1'
 
 jobs:
   detect-changed-apps:
@@ -26,10 +26,6 @@ jobs:
           repo='${{ github.repository }}'
           pr_number='${{ github.event.pull_request.number }}'
 
-          all_files=$(gh api "repos/$repo/pulls/$pr_number/files" --paginate --jq '.[].filename')
-          echo "DEBUG all changed files:"
-          echo "$all_files"
-
           # gh api "repos/$repo/pulls/$pr_number/files" pr에 변경된 파일 목록 가져오기 (--paginate 전체 페이지)
           # --jq '.[].filename' jq 사용하여 filename 필드만 한줄씩 출력
           # | grep '^apps/' "apps/"로 시작하는 경로만 필터링
@@ -43,8 +39,6 @@ jobs:
           | sort -u \
           | jq -Rc '.' \
           | jq -sc '.')
-
-          echo "DEBUG changed_apps: $changed_apps"
 
           if [ "$changed_apps" = "[]" ]; then
             echo "has-changes=false" >> "$GITHUB_OUTPUT"
