@@ -15,8 +15,8 @@ const c = () => {
 const d = () => 'test';
 const e = () => 'test';
 const f = () => {
-  let a = 1+1
-  return a;
+
+  return 1 + 1;
 };
 const gg = () => {
   return 'test';
