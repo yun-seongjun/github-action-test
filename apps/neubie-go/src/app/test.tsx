@@ -16,7 +16,7 @@ const d = () => 'test';
 const e = () => 'test';
 const f = () => {
   let a = 1+1
-  return 'test';
+  return a;
 };
 const gg = () => {
   return 'test';
@@ -24,4 +24,4 @@ const gg = () => {
 const hh = () => {
   return 'test';
 };
-console.log(a, b, c, d, e, f);
+console.log(a, b, c, d, e, f, gg, hh);
