@@ -10,62 +10,24 @@ jobs:
       contents: read
       pull-requests: write
       id-token: write
+    env:
+      ATLASSIAN_EMAIL: ${{ secrets.ATLASSIAN_EMAIL }}
+      ATLASSIAN_API_TOKEN: ${{ secrets.ATLASSIAN_API_TOKEN }}
+      ATLASSIAN_DOMAIN: ${{ secrets.ATLASSIAN_DOMAIN }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
-      # 주석 테스트
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR #${{ github.event.pull_request.number }}을 CLAUDE.md의 가이드라인에 따라 리뷰하세요.
 
-            ## 작업 지시
-
-            이 PR을 코드 품질 체크리스트에 따라 검토하세요.
-
-            ### 검토 항목
-            1. 코드 스타일 가이드 준수
-            2. 의미있는 변수 이름 사용
-            3. DRY 원칙 준수 (Don't Repeat Yourself)
-            4. KISS 원칙 준수 (Keep It Simple, Stupid)
-            5. YAGNI 원칙 준수 (You Aren't Gonna Need It)
-
-            ### 수행할 작업
-
-            **1단계**: `gh pr diff ${{ github.event.pull_request.number }}`로 변경 사항을 확인하세요.
-
-            **2단계**: 개선이 필요한 특정 코드 라인에는 인라인 댓글을 남기세요.
-
-            **3단계**: 반드시 `gh pr comment ${{ github.event.pull_request.number }} --body "..."` 명령어를 사용하여 아래 형식의 최종 요약을 PR 코멘트로 남기세요.
-
-            ### 최종 요약 형식 (이 형식을 정확히 사용할 것)
-            ```
-            ## 📋 PR 코드 리뷰 결과
-
-            | 항목 | 상태 | 비고 |
-            |------|------|------|
-            | 코드 스타일 가이드 준수 | [상태] | [설명] |
-            | 의미있는 변수 이름 사용 | [상태] | [설명] |
-            | DRY 원칙 준수 | [상태] | [설명] |
-            | KISS 원칙 준수 | [상태] | [설명] |
-            | YAGNI 원칙 준수 | [상태] | [설명] |
-
-            ### 📝 종합 의견
-            [전체적인 코드 품질에 대한 요약]
-
-            ### 💡 개선 제안
-            [있는 경우에만 작성]
-            ```
-
-            상태 표시 기준:
-              - ✅ : 충족
-              - ⚠️ : 부분 충족 (개선 권장)
-              - ❌ : 미충족 (수정 필요)
-
-            **중요**: 3단계의 PR 코멘트 작성을 반드시 수행하세요.
+            1. CLAUDE.md의 참조 문서를 confluence_get_page로 조회
+            2. gh pr diff로 변경사항 확인
+            3. 문제 있는 코드에 인라인 댓글 작성
+            4. gh pr comment로 최종 요약 작성 (CLAUDE.md의 형식 사용)
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "mcp__atlassian__confluence_get_page,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
