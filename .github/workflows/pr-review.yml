@@ -15,6 +15,7 @@ jobs:
         with:
           fetch-depth: 1
 
+      # 주석 테스트
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
