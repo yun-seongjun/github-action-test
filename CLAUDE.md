@@ -1,6 +1,6 @@
 # 코드 리뷰 가이드
 
-## 참조 문서 (confluence_get_page로 조회)
+## 참조 문서 (`confluence_get_page`로 조회)
 | 페이지 ID | 문서명 |
 |-----------|--------|
 | 484082682 | FE - Style Guide 정의 |
@@ -14,9 +14,9 @@
 5. YAGNI 원칙 준수
 
 ## 수행 작업
-1. `gh pr diff`로 변경사항 확인
+1. `gh pr diff ${{ github.event.pull_request.number }}`로 변경사항 확인
 2. 문제 있는 코드에 인라인 댓글 작성
-3. `gh pr comment --body "..."`로 아래 형식의 요약 작성
+3. `gh pr comment ${{ github.event.pull_request.number }} --body "..."`로 아래 형식의 요약 작성
 
 ## 요약 형식 (이 형식만 출력)
 
