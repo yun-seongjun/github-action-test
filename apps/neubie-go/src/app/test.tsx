@@ -14,7 +14,8 @@ const c = () => {
 };
 const d = () => 'test';
 const e = () => 'test';
-const ff = () => {
+const f = () => {
+  let a = 1+1
   return 'test';
 };
 const gg = () => {
