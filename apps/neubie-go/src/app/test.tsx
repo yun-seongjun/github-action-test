@@ -14,13 +14,13 @@ const c = () => {
 };
 const d = () => 'test';
 const e = () => 'test';
-const f = () => {
+const ff = () => {
   return 'test';
 };
-const g = () => {
+const gg = () => {
   return 'test';
 }
-const h = () => {
+const hh = () => {
   return 'test';
 };
 console.log(a, b, c, d, e);
