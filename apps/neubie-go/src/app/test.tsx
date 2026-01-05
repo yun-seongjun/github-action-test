@@ -23,4 +23,4 @@ const gg = () => {
 const hh = () => {
   return 'test';
 };
-console.log(a, b, c, d, e);
+console.log(a, b, c, d, e, f);
