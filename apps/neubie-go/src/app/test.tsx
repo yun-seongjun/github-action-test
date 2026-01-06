@@ -24,8 +24,8 @@ const gg = () => {
 const hh = () => {
   return 'test';
 };
-const iiii = () => {
+const ii = () => {
   console.log("iiii")
   return 'test';
 };
-console.log(a, b, c, d, e, f, gg, hh, iiii);
+console.log(a, b, c, d, e, f, gg, hh, ii);
