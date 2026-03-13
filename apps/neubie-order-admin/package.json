@@ -26,7 +26,6 @@
     ]
   },
   "dependencies": {
-    "@nx/next": "^20.3.0",
     "daisyui": "^2.52.0",
     "i18next": "23.5.1",
     "next": "14.2.16",

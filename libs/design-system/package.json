@@ -4,6 +4,11 @@
   "private": "true",
   "scripts": {
     "build-icons": "node ../../scripts/build-icon-script.js && node ../../scripts/lazy-icon-script.js",
-    "type-inspect": "echo @design-system are not included"
+    "type-inspect": "echo @design-system are not included",
+    "storybook": "storybook dev -p 6006",
+    "storybook:build": "storybook build"
+  },
+  "devDependencies": {
+    "chromatic": "^11.0.0"
   }
 }

@@ -1,23 +1,21 @@
-const plugin = require('tailwindcss/plugin');
+const plugin = require('tailwindcss/plugin')
 
-const FONT_SIZE_BASE = 10;
-const fitContentProperty = { fit: 'fit-content' };
+const FONT_SIZE_BASE = 10
+const fitContentProperty = { fit: 'fit-content' }
 
 // base font-size: 10px
-const rem0_1000 = {
-  ...Array.from(Array(2001)).map((_, i) => `${i / FONT_SIZE_BASE}rem`),
-};
+const rem0_1000 = { ...Array.from(Array(2001)).map((_, i) => `${i / FONT_SIZE_BASE}rem`) }
 const fontSize0_200 = () => {
-  const sizeObj = {};
+  const sizeObj = {}
   Array.from(Array(201)).forEach((_, i) => {
-    sizeObj[`.font-size-${[i]}`] = { fontSize: `${i / FONT_SIZE_BASE}rem` };
-  });
-  return sizeObj;
-};
+    sizeObj[`.font-size-${[i]}`] = { fontSize: `${i / FONT_SIZE_BASE}rem` }
+  })
+  return sizeObj
+}
 
 const config = {
   future: {
-    hoverOnlyWhenSupported: true,
+    hoverOnlyWhenSupported: true
   },
   fontSizeBase: FONT_SIZE_BASE,
   content: [
@@ -28,13 +26,16 @@ const config = {
     './src/**/*.{js,ts,jsx,tsx}',
     '../../libs/design-system/**/*.{js,ts,jsx,tsx}', // 예시
     './node_modules/@neubie/design-system/**/*.{js,ts,jsx,tsx}',
+    // Storybook
+    './libs/design-system/src/**/*.{js,ts,jsx,tsx}',
+    './libs/design-system/.storybook/**/*.{js,ts,jsx,tsx}'
   ],
   prefix: '',
   theme: {
     fontWeight: {
       light: 300,
       medium: 500,
-      bold: 700,
+      bold: 700
     },
     colors: {
       white: '#FFFFFF',
@@ -50,7 +51,7 @@ const config = {
         600: '#0097D2',
         700: '#0085C0',
         800: '#0074AD',
-        900: '#00548D',
+        900: '#00548D'
       },
       primary: {
         900: '#004E34',
@@ -63,7 +64,7 @@ const config = {
         300: '#54D1A7',
         200: '#8ADFC3',
         100: '#B0EAD6',
-        50: '#E6F8F2',
+        50: '#E6F8F2'
       },
       secondary: {
         900: '#1C2D6B',
@@ -76,7 +77,7 @@ const config = {
         300: '#809DFF',
         200: '#A8BBFF',
         100: '#C4D1FF',
-        50: '#ECF0FF',
+        50: '#ECF0FF'
       },
       tertiary: {
         900: '#311300',
@@ -89,7 +90,7 @@ const config = {
         DEFAULT: '#F8914A',
         200: '#FFB689',
         100: '#FFDBC8',
-        50: '#FFEDE4',
+        50: '#FFEDE4'
       },
       red: {
         900: '#410003',
@@ -102,7 +103,7 @@ const config = {
         300: '#FF8980',
         200: '#FFB3AC',
         100: '#FFDAD6',
-        50: '#FFEDEB',
+        50: '#FFEDEB'
       },
       mono: {
         900: '#000000',
@@ -115,7 +116,7 @@ const config = {
         300: '#C4C4C4',
         200: '#D9D9D9',
         100: '#E9E9E9',
-        50: '#F5F5F5',
+        50: '#F5F5F5'
       },
       error: '#C83532',
       warning: '#EF8A43',
@@ -126,7 +127,7 @@ const config = {
        * bg-[#D2E5DF] 로 했을때 적용이 안되어서 아래와 같이 정의
        */
       select: '#D2E5DF',
-      transparent: 'transparent',
+      transparent: 'transparent'
     },
     blur: rem0_1000,
     borderWidth: rem0_1000,
@@ -137,21 +138,21 @@ const config = {
     maxWidth: { ...rem0_1000, ...fitContentProperty },
     maxHeight: { ...rem0_1000, ...fitContentProperty },
     spacing: {
-      ...rem0_1000,
+      ...rem0_1000
     },
     zIndex: {
       one: 1,
       map: {
         rectangle: {
           selectWay: 1030,
-          dragBox: 2100,
+          dragBox: 2100
         },
         polyline: {
           normal: 1000,
           custom: 1010,
           currentPath: 1020,
           centerWay: 1030,
-          partialWay: 1040,
+          partialWay: 1040
         },
         point: 1100,
         marker: {
@@ -170,8 +171,8 @@ const config = {
           'robot-location': 1800,
           activated: 1950,
           hover: 2000,
-          'tool-box': 2100,
-        },
+          'tool-box': 2100
+        }
       },
       'table-content': 3100,
       'table-header': 3200,
@@ -192,7 +193,7 @@ const config = {
       bottomSheet: '35',
       'order-modal': '40',
       'order-toast': '50',
-      'order-loading': '100',
+      'order-loading': '100'
     },
     gap: rem0_1000,
     borderRadius: {
@@ -203,7 +204,7 @@ const config = {
       medium: '1.6rem',
       large: '3.2rem',
       'extra-large': '4.8rem',
-      full: '9999px',
+      full: '9999px'
     },
     extend: {
       boxShadow: {
@@ -245,16 +246,16 @@ const config = {
         'dark-top-1': '0 -2px 2px 0 rgba(0, 0, 0, 0.25)',
         'dark-top-2': '0 -4px 4px 0 rgba(0, 0, 0, 0.25)',
         'dark-top-3': '0 -8px 8px 0 rgba(0, 0, 0, 0.25)',
-        'dark-top-4': '0 -12px 12px 0 rgba(0, 0, 0, 0.25)',
-      },
+        'dark-top-4': '0 -12px 12px 0 rgba(0, 0, 0, 0.25)'
+      }
     },
     backgroundImage: {
       'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-      'gradient-to-br': 'linear-gradient(to right, var(--tw-gradient-stops));',
+      'gradient-to-br': 'linear-gradient(to right, var(--tw-gradient-stops));'
     },
     listStyleType: {
-      square: 'square',
-    },
+      square: 'square'
+    }
   },
   plugins: [
     import('tailwind-scrollbar-hide'),
@@ -277,13 +278,13 @@ const config = {
         '.font-size-68': { fontSize: '6.8rem', lineHeight: '8.8rem' },
         '.font-size-76': { fontSize: '7.6rem', lineHeight: '9.9rem' },
         '.font-size-84': { fontSize: '8.4rem', lineHeight: '10.9rem' },
-        '.font-size-92': { fontSize: '9.2rem', lineHeight: '12rem' },
-      });
+        '.font-size-92': { fontSize: '9.2rem', lineHeight: '12rem' }
+      })
     }),
     plugin(function ({ addVariant }) {
-      addVariant('hover', '@media(hover :hover) and (pointer: fine){&:hover}');
-    }),
-  ],
-};
+      addVariant('hover', '@media(hover :hover) and (pointer: fine){&:hover}')
+    })
+  ]
+}
 
-module.exports = config;
+module.exports = config
