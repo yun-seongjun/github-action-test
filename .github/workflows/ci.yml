@@ -9,7 +9,6 @@ on:
 
 env:
   NEXT_TELEMETRY_DISABLED: '1'
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   build:
@@ -20,7 +19,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: nrwl/nx-set-shas@v4
+      - name: Set NX SHAs
+        run: |
+          echo "NX_BASE=${{ github.event.pull_request.base.sha }}" >> $GITHUB_ENV
+          echo "NX_HEAD=${{ github.event.pull_request.head.sha }}" >> $GITHUB_ENV
 
       - uses: actions/setup-node@v5
         with:
