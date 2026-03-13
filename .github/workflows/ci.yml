@@ -43,4 +43,4 @@ jobs:
         run: yarn install --frozen-lockfile
 
       - name: Build affected
-        run: yarn nx affected -t build --verbose
+        run: yarn nx affected -t build
