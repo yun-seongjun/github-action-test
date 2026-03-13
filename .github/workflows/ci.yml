@@ -32,7 +32,9 @@ jobs:
       - name: Cache Nx
         uses: actions/cache@v5
         with:
-          path: .nx/cache
+          path: |
+            .nx/cache
+            .nx/workspace-data
           key: nx-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
           restore-keys: |
             nx-${{ runner.os }}-
@@ -42,10 +44,10 @@ jobs:
 
       - name: Debug cache
         run: |
+          echo "=== .nx directory structure ==="
+          find .nx -type f 2>/dev/null | head -100 || echo "No .nx directory"
           echo "=== .nx/cache contents ==="
           ls -la .nx/cache 2>/dev/null || echo "No cache directory"
-          echo "=== .nx/cache subdirs ==="
-          ls -la .nx/cache/*/ 2>/dev/null | head -50 || echo "No subdirs"
 
       - name: Build affected
         run: yarn nx affected -t build --verbose
