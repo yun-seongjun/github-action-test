@@ -42,12 +42,5 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Debug cache
-        run: |
-          echo "=== .nx directory structure ==="
-          find .nx -type f 2>/dev/null | head -100 || echo "No .nx directory"
-          echo "=== .nx/cache contents ==="
-          ls -la .nx/cache 2>/dev/null || echo "No cache directory"
-
       - name: Build affected
         run: yarn nx affected -t build --verbose
