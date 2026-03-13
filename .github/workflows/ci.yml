@@ -38,5 +38,8 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Reset Nx
+        run: yarn nx reset
+
       - name: Build affected
-        run: yarn nx affected -t build
+        run: yarn nx affected -t build --verbose
