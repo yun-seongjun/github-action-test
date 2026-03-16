@@ -1,3 +1,9 @@
+# Dev → Staging 릴리스 워크플로우
+# - dev 브랜치 기준으로 staging 브랜치 생성 (기존 staging 삭제 후 재생성)
+# - 선택한 버전 레벨(patch/minor/major)로 버전업 + rc.1 태그 부착
+# - auto: Nx affected로 변경된 앱 자동 감지 (libs 의존성 포함)
+# - 특정 앱 선택: 해당 앱 무조건 버전업
+# - 공통 설정만 변경 시: 버전 없이 staging만 생성 (필요시 수동 선택)
 name: Dev -> Staging
 
 on:
@@ -9,55 +15,71 @@ on:
         required: true
         default: minor
         options:
-          - patch
-          - minor
-          - major
+          - patch   # x.x.1 → x.x.2
+          - minor   # x.1.x → x.2.0
+          - major   # 1.x.x → 2.0.0
       apps:
         description: "적용할 앱을 선택하세요"
         type: choice
         required: true
         default: auto
         options:
-          - auto
+          - auto    # Nx affected로 자동 감지
           - neubie-go
           - neubie-order
           - neubie-order-admin
 
+# staging 브랜치 생성/삭제 및 커밋을 위해 write 권한 필요
 permissions:
   contents: write
-
-env:
-  APPS: "neubie-go neubie-order neubie-order-admin"
 
 jobs:
   create-staging:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 - Nx affected 비교를 위해 전체 git 히스토리 필요
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: dev
           fetch-depth: 0
+
+      # Node.js 버전은 .nvmrc 파일에서 관리
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'yarn'
+
+      # Nx 명령 실행을 위해 의존성 설치 필요
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      # Nx가 main과 현재 HEAD를 비교하여 변경된 프로젝트 감지
+      - name: Set NX SHAs
+        run: |
+          git fetch origin main
+          echo "NX_BASE=origin/main" >> $GITHUB_ENV
+          echo "NX_HEAD=HEAD" >> $GITHUB_ENV
 
       - name: Configure Git
         run: |
           git config user.name "GitHub Actions"
           git config user.email "github-actions@github.com"
 
+      # 기존 staging 삭제 후 dev 기준으로 새로 생성
       - name: Recreate clean staging branch from dev
         shell: bash
         run: |
           set -euo pipefail
 
-          # origin/dev 최신 가져오기
-          git fetch origin dev
-
           # 로컬 staging 브랜치를 origin/dev 기준으로 맞추기
           git checkout -B staging origin/dev
 
           # 원격 staging 브랜치 삭제
-          git push origin --delete staging
+          git push origin --delete staging || true
 
+      # auto: Nx affected로 감지, 특정 앱: 선택한 앱 사용
       - name: Resolve target apps from changes
         id: diff
         shell: bash
@@ -66,38 +88,23 @@ jobs:
         run: |
           set -euo pipefail
 
-          # main 최신 가져오기 (dev와 변경점 체크위해)
-          git fetch origin main
-
-          TARGETS=""
-
           if [[ "$TARGET_APP" == "auto" ]]; then
-            TARGETAPPS=""
-            CHANGED_FILES=$(git diff --name-only origin/main..HEAD)
+            # Nx affected로 변경된 프로젝트 감지 (libs 의존성 포함)
+            # --type=app 으로 앱만 필터링
+            AFFECTED=$(yarn nx show projects --affected --type=app 2>/dev/null || echo "")
 
-            for FILE in $CHANGED_FILES; do
-              # apps/*/* 패턴 필터링
-              if [[ "$FILE" == apps/*/* ]]; then
-                # "apps/" 제거 (${변수#패턴} 은 앞에서부터 패턴에 매칭되는 부분 제거. #은 짧게 매칭, ##은 길게 매칭)
-                APP="${FILE#apps/}"
-                # 첫 "/" 이후 제거 (${변수%패턴} 은 뒤에서부터 매칭되는것 제거. %는 짧게 매칭 %%은 길게 매칭)
-                APP="${APP%%/*}"
-                TARGETAPPS="$TARGETAPPS $APP"
-              fi
-            done
-
-            # "$TARGETAPPS" 공백 기준으로 쪼개기 > 정렬 및 중복 제거 > 한줄 공백 구분 문자열 변환
-            TARGETS="$(echo "$TARGETAPPS" | xargs -n1 | sort -u | xargs)"
+            # 줄바꿈을 공백으로 변환
+            TARGETS=$(echo "$AFFECTED" | xargs)
           else
             TARGETS="$TARGET_APP"
           fi
 
-          # "apps=$TARGETS" 문자열 생성하여 "$GITHUB_OUTPUT" 파일 끝에 추가
           echo "apps=$TARGETS" >> "$GITHUB_OUTPUT"
+          echo "::notice::Affected apps: $TARGETS"
 
+      # 감지된 앱의 package.json 버전을 {new_level}-rc.1로 업데이트
       - name: Update app package versions to next RC
         if: ${{ steps.diff.outputs.apps != '' }}
-        # bash 문법 사용하고있어 러너 변경 대비
         shell: bash
         env:
           NEW_LEVEL: ${{ inputs.new_level }}

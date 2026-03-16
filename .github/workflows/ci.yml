@@ -1,3 +1,6 @@
+# Nx 모노레포 선택적 빌드 워크플로우
+# - PR 생성/업데이트 시 변경된 프로젝트만 빌드
+# - 캐시: 7일 미사용 시 자동 삭제, 저장소 총 10GB 제한
 name: Selective Build
 
 on:
@@ -7,71 +10,52 @@ on:
       - dev
       - staging
 
+# 최소 권한 원칙: 읽기 권한만 부여
+permissions:
+  contents: read
+
 env:
   NEXT_TELEMETRY_DISABLED: '1'
 
 jobs:
-  detect-changed-apps:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.find-apps.outputs.matrix }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Find changed apps
-        id: find-apps
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          repo='${{ github.repository }}'
-          pr_number='${{ github.event.pull_request.number }}'
-
-          # gh api "repos/$repo/pulls/$pr_number/files" pr에 변경된 파일 목록 가져오기 (--paginate 전체 페이지)
-          # --jq '.[].filename' jq 사용하여 filename 필드만 한줄씩 출력
-          # | grep '^apps/' "apps/"로 시작하는 경로만 필터링
-          # cut -d'/' -f2 구분자 "/"로 분리 후, 두번쨰 필드 추출
-          # sort -u 정렬 후 중복제거
-          # jq -Rc '.' 각 줄을 JSON 문자열로 변경
-          # jq -sc '.' 생성된 여러 JSON을 배열화
-          changed_apps=$(gh api "repos/$repo/pulls/$pr_number/files" --paginate --jq '.[].filename' \
-          | grep '^apps/' \
-          | cut -d'/' -f2 \
-          | sort -u \
-          | jq -Rc '.' \
-          | jq -sc '.')
-
-          # ls -d apps/*/ apps 하위 디렉토리 목록
-          # xargs -n1 basename 디렉토리 명
-          if [ "$changed_apps" = "[]" ]; then
-            echo "No app changes detected, building all apps..."
-            all_apps=$(ls -d apps/*/ | xargs -n1 basename | jq -Rc '.' | jq -sc '.')
-            echo "matrix={\"app\":$all_apps}" >> "$GITHUB_OUTPUT"
-          else
-            echo "Changed apps: $changed_apps"
-            echo "matrix={\"app\":$changed_apps}" >> "$GITHUB_OUTPUT"
-          fi
-
   build:
-    needs: detect-changed-apps
     runs-on: ubuntu-latest
-    # 해당 job을 어떻게 실행할 것인지 정의
-    strategy:
-      # 메트릭스중 하나가 실패하더라도 디른건 계속 진행
-      fail-fast: false
-      # 각 메트릭스 항목만큼 실행
-      matrix: ${{ fromJson(needs.detect-changed-apps.outputs.matrix) }}
 
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      # fetch-depth: 0 - Nx affected 비교를 위해 전체 git 히스토리 필요
+      - uses: actions/checkout@v5
         with:
+          fetch-depth: 0
+
+      # Nx가 PR의 base/head 커밋을 비교하여 변경된 프로젝트 감지
+      - name: Set NX SHAs
+        run: |
+          echo "NX_BASE=${{ github.event.pull_request.base.sha }}" >> $GITHUB_ENV
+          echo "NX_HEAD=${{ github.event.pull_request.head.sha }}" >> $GITHUB_ENV
+
+      # Node.js 버전은 .nvmrc 파일에서 관리 (단일 소스)
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: '.nvmrc'
           cache: 'yarn'
 
+      # Nx 빌드 캐시
+      # - 캐시 키: yarn.lock 변경 시 새 캐시 생성
+      # - "Unrecognized Cache Artifacts" 오류 발생 시: gh cache delete --all
+      # - 브랜치 격리: PR은 base 브랜치(main)와 현재 브랜치 캐시만 접근 가능
+      - name: Cache Nx
+        uses: actions/cache@v5
+        with:
+          path: |
+            .nx/cache
+            .nx/workspace-data
+          key: nx-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+          restore-keys: |
+            nx-${{ runner.os }}-
+
       - name: Install dependencies
-        # yarn.lock 파일 수정하지 않도록
         run: yarn install --frozen-lockfile
 
-      - name: Build app
-        run: yarn nx build ${{ matrix.app }}
+      # 변경된 프로젝트만 빌드 (nx affected)
+      - name: Build affected
+        run: yarn nx affected -t build

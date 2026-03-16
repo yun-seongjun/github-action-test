@@ -15,14 +15,8 @@
       "@design-system/icons/*": ["./libs/design-system/public/icons/*"],
     }
   },
-    "files": [],
-    "include": [
-      "src/**/*.js",
-      "src/**/*.jsx",
-      "src/**/*.ts",
-      "src/**/*.tsx",
-      "svg.d.ts"],
-
+  "files": [],
+  "include": ["src/**/*.js", "src/**/*.jsx", "src/**/*.ts", "src/**/*.tsx", "svg.d.ts"],
   "excludeExternals": true,
   "extends": "../../tsconfig.base.json"
 }
