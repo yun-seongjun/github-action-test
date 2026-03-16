@@ -33,3 +33,4 @@ console.log(a, b, c, d, e, f, gg, hh, ii);
 
 //test
 const testConst = ""
+const devStaging = "ok"
