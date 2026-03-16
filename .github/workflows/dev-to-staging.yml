@@ -34,10 +34,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: dev
           fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22.17.1
 
       - name: Configure Git
         run: |
@@ -56,7 +61,7 @@ jobs:
           git checkout -B staging origin/dev
 
           # 원격 staging 브랜치 삭제
-          git push origin --delete staging
+          git push origin --delete staging || true
 
       - name: Resolve target apps from changes
         id: diff

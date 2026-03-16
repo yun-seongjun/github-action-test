@@ -88,6 +88,7 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["production", "^production"],
+      "outputs": ["{projectRoot}/.next"],
       "cache": true
     },
     "@angular-devkit/build-angular:browser": {
@@ -115,9 +116,16 @@
       "!{projectRoot}/test-setup.[jt]s"
     ]
   },
-  "nxCloudAccessToken": "MTE1ZmYwZmItNGQxNS00NWMyLWExY2YtYWIyODkxZTdkOWNkfHJlYWQ=",
   "parallel": 1,
   "plugins": [
+    {
+      "plugin": "@nx/next/plugin",
+      "options": {
+        "buildTargetName": "build",
+        "devTargetName": "dev",
+        "startTargetName": "start"
+      }
+    },
     {
       "plugin": "@nx/eslint/plugin",
       "options": {
