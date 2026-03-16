@@ -1,4 +1,9 @@
+# Chromatic 배포 워크플로우
+# - main/dev 브랜치에 push 시 실행
+# - libs/design-system 변경 시에만 트리거
+# - TurboSnap으로 변경된 스토리만 스냅샷 촬영 (비용 절감)
 name: Chromatic Deployment
+
 on:
   push:
     branches:
@@ -7,6 +12,8 @@ on:
     paths:
       - 'libs/design-system/**'
 
+permissions:
+  contents: read
 
 jobs:
   chromatic:
@@ -18,10 +25,12 @@ jobs:
           # fetch-depth: 0 = 전체 git 히스토리를 가져옴
           # Chromatic이 이전 빌드와 비교하기 위해 git 히스토리가 필요
           fetch-depth: 0
+
+      # Node.js 버전은 .nvmrc 파일에서 관리
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 22.17.1
+          node-version-file: '.nvmrc'
           # cache: 'yarn' = yarn 의존성을 캐싱하여 설치 시간 단축
           # node_modules를 매번 다시 설치하지 않아 CI 시간 절약
           cache: 'yarn'
