@@ -1,7 +1,8 @@
 name: PR Review Checklist
-on:
-  pull_request:
-    types: [opened, synchronize]
+# on:
+#   pull_request:
+#     types: [opened, synchronize]
+on: workflow_dispatch  # 임시 비활성화
 
 jobs:
   checklist-review:
