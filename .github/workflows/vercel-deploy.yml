@@ -1,3 +1,7 @@
+# Vercel 배포 워크플로우
+# - main 브랜치: production 배포
+# - staging 브랜치: preview 배포 + QA 테스트 트리거 + RC 버전 증가
+# - Slack 알림 (성공/실패)
 name: Deploy
 
 on:
@@ -13,22 +17,30 @@ on:
           - NEUBIE_ORDER
           - NEUBIE_ORDER_ADMIN
 
+# staging 브랜치 push를 위해 write 권한 필요
+permissions:
+  contents: write
+
 jobs:
   deploy:
+    # main 또는 staging 브랜치에서만 실행
     if: github.ref_name == 'main' || github.ref_name == 'staging'
     runs-on: ubuntu-latest
     env:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      # 선택한 앱에 따라 Vercel 프로젝트 ID 설정
       VERCEL_PROJECT_ID: ${{ github.event.inputs.app == 'NEUBIE_GO' && secrets.VERCEL_PROJECT_ID_GO || github.event.inputs.app == 'NEUBIE_ORDER' && secrets.VERCEL_PROJECT_ID_ORDER || secrets.VERCEL_PROJECT_ID_ORDER_ADMIN }}
 
     steps:
       - uses: actions/checkout@v5
 
+      # Node.js 버전은 .nvmrc 파일에서 관리
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 22.17.1
+          node-version-file: '.nvmrc'
 
+      # 선택한 앱에 따라 앱 이름과 경로 설정
       - name: Resolve app name and path from workflow input
         run: |
           if [[ "${{ github.event.inputs.app }}" == "NEUBIE_GO" ]]; then
@@ -45,6 +57,7 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
+      # main: production 환경, staging: preview 환경
       - name: Pull Vercel Environment Information
         run: |
           if [ "${{ github.ref_name }}" == "main" ]; then
@@ -53,7 +66,7 @@ jobs:
             vercel pull --yes --environment=preview --git-branch=staging --token=${{ secrets.VERCEL_TOKEN }}
           fi
 
-
+      # main: production 빌드, staging: preview 빌드
       - name: Build Project Artifacts
         run: |
           if [ "${{ github.ref_name }}" == "main" ]; then
@@ -62,6 +75,7 @@ jobs:
             vercel build
           fi
 
+      # main: production 배포, staging: preview 배포
       - name: Deploy Project Artifacts to Vercel
         run: |
           if [ "${{ github.ref_name }}" == "main" ]; then
@@ -70,6 +84,7 @@ jobs:
             vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
           fi
 
+      # 배포 결과 Slack 알림 (성공/실패 모두)
       - name: Slack Notification
         if: always()
         uses: rtCamp/action-slack-notify@v2
@@ -96,6 +111,7 @@ jobs:
               ]
             }
 
+      # staging 배포 성공 시 QA 테스트 트리거
       - name: Trigger QA Test Workflow
         if: success() && github.ref_name == 'staging'
         uses: ./.github/actions/trigger-qa-test
@@ -104,6 +120,7 @@ jobs:
           jenkins_user: ${{ secrets.JENKINS_USER }}
           jenkins_token: ${{ secrets.JENKINS_TOKEN }}
 
+      # staging 배포 성공 시 RC 버전 증가 (rc.1 → rc.2)
       - name: Bump staging RC version from previous staging and recreate branch
         # 지금까지 스탭이 성공이고, staging일 경우에만 실행
         if: success() && github.ref_name == 'staging'
@@ -154,6 +171,6 @@ jobs:
           git add "$PACKAGE_JSON"
           git commit -m "🚀 [${APP_PATH#apps/}] ${CURRENT_VERSION} → ${NEW_VERSION}" || echo "No changes to commit"
 
-          # 원격 staging 삭제 후, 새 staging 푸시
+          # 원격 staging 삭제 후 새 staging 푸시
           git push origin --delete staging || true
           git push -u origin staging

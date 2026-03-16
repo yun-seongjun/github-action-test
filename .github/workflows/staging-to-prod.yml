@@ -1,12 +1,18 @@
+# Staging → Main, Dev 릴리스 워크플로우
+# - staging 브랜치의 RC 버전을 stable 버전으로 변환 (x.y.z-rc.n → x.y.z)
+# - 변환 후 main, dev 브랜치로 PR 생성
+# - RC 버전이 있는 앱만 처리 (이미 stable인 앱은 스킵)
 name: Staging -> Main, Dev
 
 on:
   workflow_dispatch: {}
 
+# PR 생성 및 staging 브랜치 업데이트를 위해 write 권한 필요
 permissions:
   contents: write
   pull-requests: write
 
+# 버전 변환 대상 앱 목록
 env:
   APPS: "neubie-go neubie-order neubie-order-admin"
 
@@ -15,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # fetch-depth: 0 - PR 생성을 위해 전체 git 히스토리 필요
       - name: Checkout staging
         uses: actions/checkout@v5
         with:
@@ -22,11 +29,13 @@ jobs:
           fetch-depth: 0
           token: ${{ github.token }}
 
+      # Node.js 버전은 .nvmrc 파일에서 관리
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 22.17.1
+          node-version-file: '.nvmrc'
 
+      # RC 버전 → stable 버전 변환 및 staging 브랜치 업데이트
       - name: Promote RC app versions to stable and update staging branch
         id: prep
         shell: bash
@@ -48,7 +57,7 @@ jobs:
             CURRENT_VERSION="$(node -p "require('./${PACKAGE}').version")"
             [ -n "$CURRENT_VERSION" ] || continue
 
-            # x.y.z-rc.n -> x.y.z 로 변환
+            # x.y.z-rc.n -> x.y.z 로 변환 (${변수%-rc.*}는 뒤에서부터 -rc.* 패턴 제거)
             NEW="${CURRENT_VERSION%-rc.*}"
 
             if [ -n "$NEW" ] && [ "$NEW" != "$CURRENT_VERSION" ]; then
@@ -62,12 +71,13 @@ jobs:
 
               CHANGED_APPS="$CHANGED_APPS $APP"
 
-              # PR 제목을 위해 첫번쨰 app
+              # PR 제목을 위해 첫번째 app 저장
               if [ -z "$FIRST_APP" ]; then
                 FIRST_APP="$APP"
                 FIRST_VERSION="$NEW"
               fi
 
+              # PR 본문용 버전 목록 생성
               if [ -z "$VERSIONS_LIST" ]; then
                 VERSIONS_LIST="\`${APP}@${NEW}\`"
               else
@@ -80,10 +90,8 @@ jobs:
             fi
           done
 
-          # package.json에 변동이 있을경우에만 staging에 커밋 + 원격 staging 재생성
-          # -n > 빈 문자열이면 false, 아니면  true
-          # --porcelain > 파싱하기 좋은 포맷으로 출력
-          # apps/*/package.json 중에 git에 변경된게 있는지 확인
+          # package.json에 변동이 있을 경우에만 staging에 커밋 + 원격 staging 재생성
+          # --porcelain: 파싱하기 좋은 포맷으로 출력
           if [ -n "$(git status --porcelain apps/*/package.json)" ]; then
             git config user.name "GitHub Actions"
             git config user.email "github-actions@github.com"
@@ -91,17 +99,18 @@ jobs:
             git add apps/*/package.json
             git commit -m "release: RC to stable"
 
+            # 원격 staging 삭제 후 재생성
             git push origin :staging
             git push -u origin staging
           fi
 
-          # xargs 한줄 공백 구분 문자열 변환
+          # 공백으로 구분된 문자열로 변환
           CHANGED_APPS="$(echo "$CHANGED_APPS" | xargs)"
 
           echo "head=staging" >> "$GITHUB_OUTPUT"
           echo "changed_apps=$CHANGED_APPS" >> "$GITHUB_OUTPUT"
 
-          # -eq: "==", -ne: "!=", -gt: ">", -ge: ">=", -lt: "<", -le: "<="
+          # PR 제목 생성: 1개면 앱@버전, 여러 개면 첫번째 앱 + N others
           if [ "$COUNT" -gt 0 ]; then
             if [ "$COUNT" -eq 1 ]; then
               TITLE_SHORT="\`${FIRST_APP}@${FIRST_VERSION}\`"
@@ -113,6 +122,7 @@ jobs:
             echo "title_short=$TITLE_SHORT" >> "$GITHUB_OUTPUT"
           fi
 
+      # main, dev 브랜치로 각각 PR 생성
       - name: Create PR to main & dev
         if: steps.prep.outputs.changed_apps != ''
         shell: bash
@@ -134,7 +144,7 @@ jobs:
             TITLE="${TITLE_PREFIX} ${TITLE_SHORT}"
             BODY="${TITLE_PREFIX} ${VERSIONS_LIST}"
 
-            gh pr create --repo "$REPO" --base "$BASE_BRANCH" --head "$HEAD_REF" --title "$TITLE" --body  "$BODY"
+            gh pr create --repo "$REPO" --base "$BASE_BRANCH" --head "$HEAD_REF" --title "$TITLE" --body "$BODY"
           }
 
           create_pr "main" "🚀 Release:"
