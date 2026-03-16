@@ -1,3 +1,6 @@
+# Nx 모노레포 선택적 빌드 워크플로우
+# - PR 생성/업데이트 시 변경된 프로젝트만 빌드
+# - 캐시: 7일 미사용 시 자동 삭제, 저장소 총 10GB 제한
 name: Selective Build
 
 on:
@@ -7,6 +10,7 @@ on:
       - dev
       - staging
 
+# 최소 권한 원칙: 읽기 권한만 부여
 permissions:
   contents: read
 
@@ -18,20 +22,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # fetch-depth: 0 - Nx affected 비교를 위해 전체 git 히스토리 필요
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
+      # Nx가 PR의 base/head 커밋을 비교하여 변경된 프로젝트 감지
       - name: Set NX SHAs
         run: |
           echo "NX_BASE=${{ github.event.pull_request.base.sha }}" >> $GITHUB_ENV
           echo "NX_HEAD=${{ github.event.pull_request.head.sha }}" >> $GITHUB_ENV
 
+      # Node.js 버전은 .nvmrc 파일에서 관리 (단일 소스)
       - uses: actions/setup-node@v5
         with:
           node-version-file: '.nvmrc'
           cache: 'yarn'
 
+      # Nx 빌드 캐시
+      # - 캐시 키: yarn.lock 변경 시 새 캐시 생성
+      # - "Unrecognized Cache Artifacts" 오류 발생 시: gh cache delete --all
+      # - 브랜치 격리: PR은 base 브랜치(main)와 현재 브랜치 캐시만 접근 가능
       - name: Cache Nx
         uses: actions/cache@v5
         with:
@@ -45,5 +56,6 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      # 변경된 프로젝트만 빌드 (nx affected)
       - name: Build affected
         run: yarn nx affected -t build
