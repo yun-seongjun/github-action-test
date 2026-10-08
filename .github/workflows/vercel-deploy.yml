@@ -39,6 +39,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version-file: '.nvmrc'
+          cache: 'yarn'
 
       # 선택한 앱에 따라 앱 이름과 경로 설정
       - name: Resolve app name and path from workflow input
@@ -149,6 +150,10 @@ jobs:
             BASE_VERSION="${CURRENT_VERSION%-rc.*}"
             # ${변수#패턴} 은 앞에서부터 패턴에 매칭되는 부분 제거. #은 짧게 매칭, ##은 길게 매칭
             RC_NUMBER="${CURRENT_VERSION##*-rc.}"
+          else
+            # stable 버전(staging-to-prod 이후)에 rc를 다시 붙이지 않도록 생략
+            echo "::notice::stable 버전(${CURRENT_VERSION})이라 RC 증가 생략"
+            exit 0
           fi
 
           NEXT_RC_NUMBER=$((RC_NUMBER+1))
@@ -171,6 +176,13 @@ jobs:
           git add "$PACKAGE_JSON"
           git commit -m "🚀 [${APP_PATH#apps/}] ${CURRENT_VERSION} → ${NEW_VERSION}" || echo "No changes to commit"
 
-          # 원격 staging 삭제 후 새 staging 푸시
-          git push origin --delete staging || true
-          git push -u origin staging
+          # staging은 보호 브랜치(PR 필수, 강제 push 금지)라 직접 push 불가 → 삭제 후 재생성
+          OLD_SHA="$(git rev-parse origin/staging)"
+          git push origin --delete staging
+
+          # 재생성 실패 시 삭제 전 커밋으로 staging 복구
+          if ! git push origin staging; then
+            echo "::error::staging 재생성 실패 → 기존 커밋(${OLD_SHA})으로 복구 시도"
+            git push origin "${OLD_SHA}:refs/heads/staging"
+            exit 1
+          fi

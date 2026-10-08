@@ -1,8 +1,8 @@
-# Staging → Main, Dev 릴리스 워크플로우
+# Staging → Main, Dev, Wip 릴리스 워크플로우
 # - staging 브랜치의 RC 버전을 stable 버전으로 변환 (x.y.z-rc.n → x.y.z)
-# - 변환 후 main, dev 브랜치로 PR 생성
+# - 변환 후 main, dev, wip 브랜치로 PR 생성
 # - RC 버전이 있는 앱만 처리 (이미 stable인 앱은 스킵)
-name: Staging -> Main, Dev
+name: Staging -> Main, Dev, Wip
 
 on:
   workflow_dispatch: {}
@@ -17,7 +17,7 @@ env:
   APPS: "neubie-go neubie-order neubie-order-admin"
 
 jobs:
-  staging-to-main-and-dev:
+  staging-to-main-dev-wip:
     runs-on: ubuntu-latest
 
     steps:
@@ -99,9 +99,16 @@ jobs:
             git add apps/*/package.json
             git commit -m "release: RC to stable"
 
-            # 원격 staging 삭제 후 재생성
+            # staging은 보호 브랜치(PR 필수, 강제 push 금지)라 직접 push 불가 → 삭제 후 재생성
+            OLD_SHA="$(git rev-parse origin/staging)"
             git push origin :staging
-            git push -u origin staging
+
+            # 재생성 실패 시 삭제 전 커밋으로 staging 복구
+            if ! git push origin staging; then
+              echo "::error::staging 재생성 실패 → 기존 커밋(${OLD_SHA})으로 복구 시도"
+              git push origin "${OLD_SHA}:refs/heads/staging"
+              exit 1
+            fi
           fi
 
           # 공백으로 구분된 문자열로 변환
@@ -122,8 +129,8 @@ jobs:
             echo "title_short=$TITLE_SHORT" >> "$GITHUB_OUTPUT"
           fi
 
-      # main, dev 브랜치로 각각 PR 생성
-      - name: Create PR to main & dev
+      # main, dev, wip 브랜치로 각각 PR 생성
+      - name: Create PR to main & dev & wip
         if: steps.prep.outputs.changed_apps != ''
         shell: bash
         env:
@@ -149,3 +156,4 @@ jobs:
 
           create_pr "main" "🚀 Release:"
           create_pr "dev"  "🔀 Staging -> Dev:"
+          create_pr "wip"  "🔀 Staging -> Wip:"
