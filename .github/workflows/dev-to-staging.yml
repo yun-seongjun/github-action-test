@@ -1,5 +1,5 @@
 # Dev → Staging 릴리스 워크플로우
-# - dev 브랜치 기준으로 staging 브랜치 생성 (기존 staging 삭제 후 재생성)
+# - dev 브랜치 기준으로 staging 브랜치 생성 (기존 staging 덮어쓰기)
 # - 선택한 버전 레벨(patch/minor/major)로 버전업 + rc.1 태그 부착
 # - auto: apps/ 폴더 내 변경된 앱 자동 감지
 # - 특정 앱 선택: 해당 앱 무조건 버전업
@@ -29,7 +29,7 @@ on:
           - neubie-order
           - neubie-order-admin
 
-# staging 브랜치 생성/삭제 및 커밋을 위해 write 권한 필요
+# staging 브랜치 생성/덮어쓰기 및 커밋을 위해 write 권한 필요
 permissions:
   contents: write
 
@@ -55,17 +55,14 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "github-actions@github.com"
 
-      # 기존 staging 삭제 후 dev 기준으로 새로 생성
-      - name: Recreate clean staging branch from dev
+      # dev 기준으로 로컬 staging 브랜치 생성 (원격 반영은 마지막 단계에서)
+      - name: Create staging branch from dev
         shell: bash
         run: |
           set -euo pipefail
 
           # 로컬 staging 브랜치를 origin/dev 기준으로 맞추기
           git checkout -B staging origin/dev
-
-          # 원격 staging 브랜치 삭제
-          git push origin --delete staging || true
 
       # auto: apps/ 폴더 변경 기준 감지, 특정 앱: 선택한 앱 사용
       - name: Resolve target apps from changes
@@ -156,4 +153,6 @@ jobs:
 
       - name: Push staging branch
         run: |
-          git push -u origin HEAD:staging
+          # 체크아웃 시점의 원격 staging에서 바뀌지 않았을 때만 덮어씀 (없으면 새로 생성)
+          EXPECTED_SHA="$(git rev-parse -q --verify refs/remotes/origin/staging || true)"
+          git push --force-with-lease="staging:${EXPECTED_SHA}" origin HEAD:staging
