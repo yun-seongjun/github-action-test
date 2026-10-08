@@ -90,7 +90,7 @@ jobs:
             fi
           done
 
-          # package.json에 변동이 있을 경우에만 staging에 커밋 + 원격 staging에 push
+          # package.json에 변동이 있을 경우에만 staging에 커밋 + 원격 staging 재생성
           # --porcelain: 파싱하기 좋은 포맷으로 출력
           if [ -n "$(git status --porcelain apps/*/package.json)" ]; then
             git config user.name "GitHub Actions"
@@ -99,8 +99,16 @@ jobs:
             git add apps/*/package.json
             git commit -m "release: RC to stable"
 
-            # 기존 staging 위에 버전 커밋만 추가
-            git push origin staging
+            # staging은 보호 브랜치(PR 필수, 강제 push 금지)라 직접 push 불가 → 삭제 후 재생성
+            OLD_SHA="$(git rev-parse origin/staging)"
+            git push origin :staging
+
+            # 재생성 실패 시 삭제 전 커밋으로 staging 복구
+            if ! git push origin staging; then
+              echo "::error::staging 재생성 실패 → 기존 커밋(${OLD_SHA})으로 복구 시도"
+              git push origin "${OLD_SHA}:refs/heads/staging"
+              exit 1
+            fi
           fi
 
           # 공백으로 구분된 문자열로 변환

@@ -1,5 +1,5 @@
 # Dev → Staging 릴리스 워크플로우
-# - dev 브랜치 기준으로 staging 브랜치 생성 (기존 staging 덮어쓰기)
+# - dev 브랜치 기준으로 staging 브랜치 생성 (기존 staging 삭제 후 재생성)
 # - 선택한 버전 레벨(patch/minor/major)로 버전업 + rc.1 태그 부착
 # - auto: apps/ 폴더 내 변경된 앱 자동 감지
 # - 특정 앱 선택: 해당 앱 무조건 버전업
@@ -29,7 +29,7 @@ on:
           - neubie-order
           - neubie-order-admin
 
-# staging 브랜치 생성/덮어쓰기 및 커밋을 위해 write 권한 필요
+# staging 브랜치 생성/삭제 및 커밋을 위해 write 권한 필요
 permissions:
   contents: write
 
@@ -55,7 +55,7 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "github-actions@github.com"
 
-      # dev 기준으로 로컬 staging 브랜치 생성 (원격 반영은 마지막 단계에서)
+      # dev 기준으로 로컬 staging 브랜치 생성 (원격 staging 삭제/재생성은 마지막 단계에서)
       - name: Create staging branch from dev
         shell: bash
         run: |
@@ -152,7 +152,21 @@ jobs:
           done
 
       - name: Push staging branch
+        shell: bash
         run: |
-          # 체크아웃 시점의 원격 staging에서 바뀌지 않았을 때만 덮어씀 (없으면 새로 생성)
-          EXPECTED_SHA="$(git rev-parse -q --verify refs/remotes/origin/staging || true)"
-          git push --force-with-lease="staging:${EXPECTED_SHA}" origin HEAD:staging
+          set -euo pipefail
+
+          # staging은 보호 브랜치(PR 필수, 강제 push 금지)라 직접 push 불가 → 삭제 후 재생성
+          OLD_SHA="$(git rev-parse -q --verify refs/remotes/origin/staging || true)"
+          if [ -n "$OLD_SHA" ]; then
+            git push origin --delete staging
+          fi
+
+          # 재생성 실패 시 삭제 전 커밋으로 staging 복구
+          if ! git push origin HEAD:staging; then
+            echo "::error::staging 재생성 실패 → 기존 커밋(${OLD_SHA})으로 복구 시도"
+            if [ -n "$OLD_SHA" ]; then
+              git push origin "${OLD_SHA}:refs/heads/staging"
+            fi
+            exit 1
+          fi
