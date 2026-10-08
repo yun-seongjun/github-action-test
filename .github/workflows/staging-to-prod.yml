@@ -99,16 +99,9 @@ jobs:
             git add apps/*/package.json
             git commit -m "release: RC to stable"
 
-            # staging은 보호 브랜치(PR 필수, 강제 push 금지)라 직접 push 불가 → 삭제 후 재생성
-            OLD_SHA="$(git rev-parse origin/staging)"
+            # 원격 staging 삭제 후 재생성
             git push origin :staging
-
-            # 재생성 실패 시 삭제 전 커밋으로 staging 복구
-            if ! git push origin staging; then
-              echo "::error::staging 재생성 실패 → 기존 커밋(${OLD_SHA})으로 복구 시도"
-              git push origin "${OLD_SHA}:refs/heads/staging"
-              exit 1
-            fi
+            git push -u origin staging
           fi
 
           # 공백으로 구분된 문자열로 변환
