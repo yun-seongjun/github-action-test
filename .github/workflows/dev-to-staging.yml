@@ -37,25 +37,25 @@ jobs:
   create-staging:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 - git diff 비교를 위해 전체 git 히스토리 필요
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
           ref: dev
+          fetch-depth: 0
 
       # Node.js 버전은 .nvmrc 파일에서 관리
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
           node-version-file: '.nvmrc'
-          # 의존성 설치를 안 하므로 자동 캐시 끄기 (켜두면 빈 캐시가 저장됨)
-          package-manager-cache: false
 
       - name: Configure Git
         run: |
           git config user.name "GitHub Actions"
           git config user.email "github-actions@github.com"
 
-      # dev 기준으로 로컬 staging 브랜치 생성 (원격 staging 삭제는 push 직전에)
+      # 기존 staging 삭제 후 dev 기준으로 새로 생성
       - name: Recreate clean staging branch from dev
         shell: bash
         run: |
@@ -63,6 +63,9 @@ jobs:
 
           # 로컬 staging 브랜치를 origin/dev 기준으로 맞추기
           git checkout -B staging origin/dev
+
+          # 원격 staging 브랜치 삭제
+          git push origin --delete staging || true
 
       # auto: apps/ 폴더 변경 기준 감지, 특정 앱: 선택한 앱 사용
       - name: Resolve target apps from changes
@@ -153,6 +156,4 @@ jobs:
 
       - name: Push staging branch
         run: |
-          # 원격 staging 삭제 후 재생성 (앞 단계가 실패해도 staging이 남도록 push 직전에 삭제)
-          git push origin --delete staging || true
-          git push origin HEAD:staging
+          git push -u origin HEAD:staging

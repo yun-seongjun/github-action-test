@@ -1,7 +1,6 @@
-# PR 변경 감지 기반 선택적 빌드
-# - libs/ 변경: 전체 앱 빌드
-# - apps/ 변경: 해당 앱만 빌드
-# - matrix로 병렬 실행
+# Nx 모노레포 선택적 빌드 워크플로우
+# - PR 생성/업데이트 시 변경된 프로젝트만 빌드
+# - 캐시: 7일 미사용 시 자동 삭제, 저장소 총 10GB 제한
 name: Selective Build
 
 on:
@@ -14,100 +13,49 @@ on:
 # 최소 권한 원칙: 읽기 권한만 부여
 permissions:
   contents: read
-  pull-requests: read
 
 env:
   NEXT_TELEMETRY_DISABLED: '1'
 
-# 같은 PR에 새 push가 오면 진행 중인 이전 실행 취소
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
-
 jobs:
-  detect-changed-apps:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.find-apps.outputs.matrix }}
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Find changed apps
-        id: find-apps
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          repo='${{ github.repository }}'
-          pr_number='${{ github.event.pull_request.number }}'
-
-          # 전체 앱 목록 (libs 변경 또는 변경 없을 때 사용)
-          all_apps=$(ls -d apps/*/ | xargs -n1 basename | jq -Rc '.' | jq -sc '.')
-
-          # PR에 변경된 파일 목록 가져오기
-          changed_files=$(gh api "repos/$repo/pulls/$pr_number/files" --paginate --jq '.[].filename')
-
-          # libs 변경 감지 - libs 변경 시 전체 앱 빌드
-          libs_changed=$(echo "$changed_files" | grep '^libs/' | head -1)
-
-          if [ -n "$libs_changed" ]; then
-            echo "Libs changed, building all apps..."
-            echo "matrix={\"app\":$all_apps}" >> "$GITHUB_OUTPUT"
-          else
-            # apps 변경 감지
-            # grep '^apps/' - "apps/"로 시작하는 경로만 필터링
-            # cut -d'/' -f2 - 구분자 "/"로 분리 후 두 번째 필드(앱 이름) 추출
-            # sort -u - 정렬 후 중복 제거
-            # jq -Rc/-sc - JSON 배열로 변환
-            changed_apps=$(echo "$changed_files" \
-            | grep '^apps/' \
-            | cut -d'/' -f2 \
-            | sort -u \
-            | jq -Rc '.' \
-            | jq -sc '.')
-
-            if [ "$changed_apps" = "[]" ]; then
-              echo "No app changes detected, building all apps..."
-              echo "matrix={\"app\":$all_apps}" >> "$GITHUB_OUTPUT"
-            else
-              echo "Changed apps: $changed_apps"
-              echo "matrix={\"app\":$changed_apps}" >> "$GITHUB_OUTPUT"
-            fi
-          fi
-
-  # 감지된 앱들을 matrix로 병렬 빌드 (각 앱이 별도 러너에서 실행)
   build:
-    needs: detect-changed-apps
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.detect-changed-apps.outputs.matrix) }}
 
     steps:
+      # fetch-depth: 0 - Nx affected 비교를 위해 전체 git 히스토리 필요
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
+      # Nx가 PR의 base/head 커밋을 비교하여 변경된 프로젝트 감지
+      - name: Set NX SHAs
+        run: |
+          echo "NX_BASE=${{ github.event.pull_request.base.sha }}" >> $GITHUB_ENV
+          echo "NX_HEAD=${{ github.event.pull_request.head.sha }}" >> $GITHUB_ENV
+
+      # Node.js 버전은 .nvmrc 파일에서 관리 (단일 소스)
       - uses: actions/setup-node@v5
         with:
           node-version-file: '.nvmrc'
-          # yarn 캐시 대신 아래에서 node_modules를 직접 캐시
-          package-manager-cache: false
+          cache: 'yarn'
 
-      # yarn.lock과 Node 버전이 같으면 node_modules를 복원하고 설치 생략
-      # path/key는 node-modules-cache.yml과 동일하게 유지해야 함
-      - name: Restore node_modules cache
-        id: node-modules-cache
+      # Nx 빌드 캐시
+      # - 캐시 키: yarn.lock 변경 시 새 캐시 생성
+      # - "Unrecognized Cache Artifacts" 오류 발생 시: gh cache delete --all
+      # - 브랜치 격리: PR은 base 브랜치(main)와 현재 브랜치 캐시만 접근 가능
+      - name: Cache Nx
         uses: actions/cache@v5
         with:
           path: |
-            node_modules
-            apps/*/node_modules
-            libs/*/node_modules
-          key: node-modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'yarn.lock') }}
+            .nx/cache
+            .nx/workspace-data
+          key: nx-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
+          restore-keys: |
+            nx-${{ runner.os }}-
 
       - name: Install dependencies
-        if: steps.node-modules-cache.outputs.cache-hit != 'true'
-        # yarn.lock 파일 수정하지 않도록
         run: yarn install --frozen-lockfile
 
-      - name: Build app
-        run: yarn nx build ${{ matrix.app }}
+      # 변경된 프로젝트만 빌드 (nx affected)
+      - name: Build affected
+        run: yarn nx affected -t build
