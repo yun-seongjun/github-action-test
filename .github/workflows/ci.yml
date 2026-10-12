@@ -19,6 +19,11 @@ permissions:
 env:
   NEXT_TELEMETRY_DISABLED: '1'
 
+# 같은 PR에 새 push가 오면 진행 중인 이전 실행 취소
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   detect-changed-apps:
     runs-on: ubuntu-latest
@@ -84,9 +89,23 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version-file: '.nvmrc'
-          cache: 'yarn'
+          # yarn 캐시 대신 아래에서 node_modules를 직접 캐시
+          package-manager-cache: false
+
+      # yarn.lock과 Node 버전이 같으면 node_modules를 복원하고 설치 생략
+      # path/key는 node-modules-cache.yml과 동일하게 유지해야 함
+      - name: Restore node_modules cache
+        id: node-modules-cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            libs/*/node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'yarn.lock') }}
 
       - name: Install dependencies
+        if: steps.node-modules-cache.outputs.cache-hit != 'true'
         # yarn.lock 파일 수정하지 않도록
         run: yarn install --frozen-lockfile
 

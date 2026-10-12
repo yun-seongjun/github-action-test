@@ -21,20 +21,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # fetch-depth: 0 - PR 생성을 위해 전체 git 히스토리 필요
       - name: Checkout staging
         uses: actions/checkout@v5
         with:
           ref: staging
-          fetch-depth: 0
-          token: ${{ github.token }}
 
       # Node.js 버전은 .nvmrc 파일에서 관리
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
           node-version-file: '.nvmrc'
-          # 의존성 설치를 하지 않으므로 setup-node v5 자동 캐시(packageManager 감지) 끄기 — 켜두면 빈 캐시가 저장됨
+          # 의존성 설치를 안 하므로 자동 캐시(packageManager 감지) 끄기 - 켜두면 빈 캐시가 저장되어 PR CI 캐시를 망가뜨림
           package-manager-cache: false
 
       # RC 버전 → stable 버전 변환 및 staging 브랜치 업데이트
@@ -57,7 +54,6 @@ jobs:
             [ -f "$PACKAGE" ] || continue
 
             CURRENT_VERSION="$(node -p "require('./${PACKAGE}').version")"
-            [ -n "$CURRENT_VERSION" ] || continue
 
             # x.y.z-rc.n -> x.y.z 로 변환 (${변수%-rc.*}는 뒤에서부터 -rc.* 패턴 제거)
             NEW="${CURRENT_VERSION%-rc.*}"
@@ -103,13 +99,12 @@ jobs:
 
             # 원격 staging 삭제 후 재생성
             git push origin :staging
-            git push -u origin staging
+            git push origin staging
           fi
 
           # 공백으로 구분된 문자열로 변환
           CHANGED_APPS="$(echo "$CHANGED_APPS" | xargs)"
 
-          echo "head=staging" >> "$GITHUB_OUTPUT"
           echo "changed_apps=$CHANGED_APPS" >> "$GITHUB_OUTPUT"
 
           # PR 제목 생성: 1개면 앱@버전, 여러 개면 첫번째 앱 + N others
@@ -130,7 +125,6 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_REF: ${{ steps.prep.outputs.head }}
           TITLE_SHORT: ${{ steps.prep.outputs.title_short }}
           VERSIONS_LIST: ${{ steps.prep.outputs.versions_list }}
           REPO: ${{ github.repository }}
@@ -140,13 +134,11 @@ jobs:
           create_pr() {
             local BASE_BRANCH="$1" TITLE_PREFIX="$2"
 
-            git fetch origin "$BASE_BRANCH" "$HEAD_REF"
-
             local TITLE BODY
             TITLE="${TITLE_PREFIX} ${TITLE_SHORT}"
             BODY="${TITLE_PREFIX} ${VERSIONS_LIST}"
 
-            gh pr create --repo "$REPO" --base "$BASE_BRANCH" --head "$HEAD_REF" --title "$TITLE" --body "$BODY"
+            gh pr create --repo "$REPO" --base "$BASE_BRANCH" --head staging --title "$TITLE" --body "$BODY"
           }
 
           create_pr "main" "🚀 Release:"
