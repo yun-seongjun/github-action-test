@@ -40,6 +40,8 @@ jobs:
     concurrency:
       group: staging-write
       cancel-in-progress: false
+      # 기본값(single)은 대기 1개만 허용해서 3개가 몰리면 대기 중인 것이 취소됨 → 모두 순서대로 대기
+      queue: max
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
