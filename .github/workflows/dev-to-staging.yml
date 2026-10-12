@@ -49,6 +49,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version-file: '.nvmrc'
+          # 의존성 설치를 하지 않으므로 setup-node v5 자동 캐시(packageManager 감지) 끄기 — 켜두면 빈 캐시가 저장됨
+          package-manager-cache: false
 
       - name: Configure Git
         run: |
