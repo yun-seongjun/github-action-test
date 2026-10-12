@@ -39,7 +39,6 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version-file: '.nvmrc'
-          cache: 'yarn'
 
       # 선택한 앱에 따라 앱 이름과 경로 설정
       - name: Resolve app name and path from workflow input
@@ -55,9 +54,8 @@ jobs:
             echo "APP_PATH=apps/neubie-order-admin" >> $GITHUB_ENV
           fi
 
-      # 메이저 업데이트로 갑자기 깨지지 않도록 검증된 버전 고정
       - name: Install Vercel CLI
-        run: npm install --global vercel@62.4.0
+        run: npm install --global vercel@latest
 
       # main: production 환경, staging: preview 환경
       - name: Pull Vercel Environment Information
@@ -132,9 +130,9 @@ jobs:
           APP_PATH="${{ env.APP_PATH }}"
           PACKAGE_JSON="${APP_PATH}/package.json"
 
-          # origin/staging 기준으로 로컬 staging 브랜치 생성 후 현재 버전 읽기
+          # origin/staging 기준으로 로컬 임시 브랜치("staging_version_base") 생성 후 현재 버전 읽기
           git fetch origin staging
-          git checkout -B staging origin/staging || {
+          git checkout -B staging_version_base origin/staging || {
             # orgin/staging을 불러오지못하면 종료(rc버전을 찾을수 없기때문에)
             echo "❌ origin/staging not found. Cannot read RC version."
             exit 1
@@ -142,22 +140,23 @@ jobs:
           CURRENT_VERSION=$(node -p "require('./${PACKAGE_JSON}').version")
 
           # base(-rc.N) 형태로 파싱 후 rc버전 증가
+          BASE_VERSION="$CURRENT_VERSION"
+          RC_NUMBER=0
+
           # "-rc." 가 붙어 있으면 rc 번호와 base 잘라내기
           if [[ "$CURRENT_VERSION" == *-rc.* ]]; then
             # ${변수%패턴} 은 뒤에서부터 매칭되는것 제거. %는 짧게 매칭 %%은 길게 매칭
             BASE_VERSION="${CURRENT_VERSION%-rc.*}"
             # ${변수#패턴} 은 앞에서부터 패턴에 매칭되는 부분 제거. #은 짧게 매칭, ##은 길게 매칭
             RC_NUMBER="${CURRENT_VERSION##*-rc.}"
-          else
-            # stable 버전(staging-to-prod 이후)에 rc를 다시 붙이지 않도록 생략
-            echo "::notice::stable 버전(${CURRENT_VERSION})이라 RC 증가 생략"
-            exit 0
           fi
 
           NEXT_RC_NUMBER=$((RC_NUMBER+1))
           NEW_VERSION="${BASE_VERSION}-rc.${NEXT_RC_NUMBER}"
 
-          # NEW_VERSION 반영
+          # staging 기준으로 staging 브랜치 재생성 후 NEW_VERSION 반영
+          git checkout -B staging origin/staging
+
           node -e "
             const fs = require('fs');
             const path = '${PACKAGE_JSON}';
@@ -170,8 +169,8 @@ jobs:
           git config user.email "github-actions@github.com"
 
           git add "$PACKAGE_JSON"
-          git commit -m "🚀 [${APP_PATH#apps/}] ${CURRENT_VERSION} → ${NEW_VERSION}"
+          git commit -m "🚀 [${APP_PATH#apps/}] ${CURRENT_VERSION} → ${NEW_VERSION}" || echo "No changes to commit"
 
           # 원격 staging 삭제 후 새 staging 푸시
           git push origin --delete staging || true
-          git push origin staging
+          git push -u origin staging
