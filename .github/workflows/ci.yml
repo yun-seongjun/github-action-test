@@ -92,7 +92,7 @@ jobs:
           # yarn 캐시 대신 아래에서 node_modules를 직접 캐시
           package-manager-cache: false
 
-      # yarn.lock과 Node 버전이 같으면 node_modules를 복원하고 설치 생략
+      # yarn.lock과 Node 버전이 같으면 node_modules를 복원 (설치 단계가 확인만 하고 금방 끝남)
       # path/key는 node-modules-cache.yml과 동일하게 유지해야 함
       - name: Restore node_modules cache
         id: node-modules-cache
@@ -104,8 +104,8 @@ jobs:
             libs/*/node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'yarn.lock') }}
 
+      # 캐시를 복원해도 항상 실행 - package.json과 yarn.lock이 어긋나면 여기서 실패해야 함
       - name: Install dependencies
-        if: steps.node-modules-cache.outputs.cache-hit != 'true'
         # yarn.lock 파일 수정하지 않도록
         run: yarn install --frozen-lockfile
 
